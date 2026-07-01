@@ -113,7 +113,11 @@ class ServerUrlActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
 
-        val background = TypedValue().also {
+        // Named to avoid shadowing View.background inside the nested apply {} blocks below --
+        // a bare `background = ...` there would otherwise try to reassign this val instead of
+        // setting the receiver's own property (Kotlin resolves enclosing-scope locals before
+        // receiver members for unqualified assignment).
+        val rippleBackground = TypedValue().also {
             theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
         }
         val row = LinearLayout(this).apply {
@@ -122,7 +126,7 @@ class ServerUrlActivity : AppCompatActivity() {
             setPadding(dp(20), dp(16), dp(20), dp(16))
             isClickable = true
             isFocusable = true
-            setBackgroundResource(background.resourceId)
+            setBackgroundResource(rippleBackground.resourceId)
             setOnClickListener { onClick() }
         }
 
