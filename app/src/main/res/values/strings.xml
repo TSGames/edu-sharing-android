@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">edu-sharing</string>
+    <string name="server_url_title">edu-sharing server</string>
+    <string name="server_url_prompt">Connect to your edu-sharing server</string>
+    <string name="server_url_hint">https://repository.example.org</string>
+    <string name="server_url_continue">Continue</string>
+    <string name="server_url_invalid">Please enter a valid server URL</string>
+</resources>

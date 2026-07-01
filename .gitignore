@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android / IDE
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+
+# Secrets — never commit signing material
+keystore.properties
+*.jks
+*.keystore
