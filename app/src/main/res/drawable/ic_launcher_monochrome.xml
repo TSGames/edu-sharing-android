@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Themed-icon (Android 13+) silhouette: just the honeycomb mark, single color (the system
+    replaces it with the user's theme tint). The BETA badge is dropped here since a
+    single-tone rendering can't distinguish badge-fill from letter-cutout, so it would only
+    read as a shapeless blob.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#000000"
+        android:pathData="M55.8,34.4 L46.55,50.42 L28.05,50.42 L18.8,34.4 L28.05,18.38 L46.55,18.38 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M89.4,54.0 L80.15,70.02 L61.65,70.02 L52.4,54.0 L61.65,37.98 L80.15,37.98 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M55.8,73.5 L46.55,89.52 L28.05,89.52 L18.8,73.5 L28.05,57.48 L46.55,57.48 Z" />
+</vector>

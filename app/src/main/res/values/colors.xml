@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#00689B</color>
+    <!-- White to match the gaps in the edu-sharing honeycomb mark (ic_launcher_foreground). -->
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>
