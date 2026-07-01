@@ -46,6 +46,22 @@ app" *and* still gets share content redirected to `AppSharePageComponent`:
   TEXT'|'STREAM']`, `.clipItems[0].file`, `.stream` (base64)). This is what the old code calls
   `this.observerShareContent.next(...)` with, which is what its `router.navigate([...,'app',
   'share'], {queryParams: data})` subscription actually redirects on.
+- A `navigator.app.exitApp()`/`.backHistory()` stub, routing `exitApp()` to the
+  already-injected `window.eduBridge.exitApp()` binding. Old `CordovaService.exitApp()` (e.g.
+  behind the login page's close button, `AppLoginPageComponent.buttonExitApp()`) and
+  `onBackKeyDown()` call `navigator.app.exitApp()` directly with no `window.eduBridge` check,
+  so without this it silently no-ops.
+- Tracking of whether the old code registered a `'backbutton'` listener (wraps
+  `document.addEventListener` for that one event name; old `whenDeviceIsReady()` registers it
+  unconditionally once reached). `MainActivity`'s back handler dispatches that event — as a
+  fallback alongside the existing `eduBridgeOnBack` check — only when the tracked flag
+  confirms a listener is actually present, so it doesn't guess and risk a double back
+  navigation.
+
+No shim is needed for OAuth token storage: old `getPermanentStorage`/`setPermanentStorage`
+already use `window.localStorage` unconditionally on Android (the `NativeStorage` plugin
+fallback is gated behind `isIOS()`, which this shim's `window.device.platform = 'Android'`
+makes `false`) — this shell's real WebView `localStorage` already satisfies that path.
 
 It deliberately does **not** implement `resolveLocalFileSystemURL`/`NativeStorage`/any other
 legacy plugin — `AppSharePageComponent` (unchanged across old and new) already reads
