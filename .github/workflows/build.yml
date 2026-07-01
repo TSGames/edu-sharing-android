@@ -42,4 +42,4 @@ jobs:
           name: edu-sharing-android-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
