@@ -12,7 +12,11 @@ import java.net.URL
  */
 object ServerRegistry {
     private const val TAG = "ServerRegistry"
-    private const val REGISTRY_URL = "https://app-registry.edu-sharing.com/servers.php"
+
+    // Sent as the app-registry's `min`/`max` compatibility gate (see fetch()'s doc comment
+    // below) so the server only returns entries this shell is actually compatible with.
+    private const val APP_VERSION = "3.0"
+    private const val REGISTRY_URL = "https://app-registry.edu-sharing.com/servers.php?version=$APP_VERSION"
     private const val TIMEOUT_MILLIS = 10_000
 
     data class Entry(val name: String, val url: String)
@@ -23,10 +27,9 @@ object ServerRegistry {
      *
      * Some entries carry `min`/`max` integer fields. These appear to gate entries by a
      * compatible app-version range, mirroring how this host used to serve version-pinned
-     * Cordova JS bundles to the old hybrid app. This shell doesn't fetch versioned bundles at
-     * all anymore (it just loads whatever SPA build the chosen server serves), so those fields
-     * aren't meaningful here and are intentionally ignored — every entry with a name and URL
-     * is returned.
+     * Cordova JS bundles to the old hybrid app. The `?version=` query param above lets the
+     * server apply that filtering itself, so this shell doesn't need to re-check `min`/`max`
+     * client-side — every entry with a name and URL in the response is shown as-is.
      */
     fun fetch(): List<Entry> = try {
         val connection = URL(REGISTRY_URL).openConnection() as HttpURLConnection

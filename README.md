@@ -186,14 +186,14 @@ The screen is a rough rebuild of the old (Ionic) app's server picker: a fixed-da
 of rows — each a colored letter-avatar (deterministic per server name, since the registry
 doesn't provide per-server icons), the name, its URL, and a chevron. Tapping a row connects
 immediately, no extra confirmation step. The list is fetched from
-`https://app-registry.edu-sharing.com/servers.php` (`ServerRegistry.kt`); "Enter your own
-server" is always appended as the last row and reveals the manual URL-entry form (its own
-"Continue" button) below the list when tapped. Fetch failures (offline, unreachable) just
-leave the list with only that row — manual entry always remains available. Some registry
-entries carry `min`/`max` integer fields that appear to gate a compatible app-version range
-for the old hybrid app's version-pinned Cordova bundles; this shell doesn't fetch versioned
-bundles at all anymore, so those fields aren't meaningful here and every entry is shown
-regardless. Note that any listed `http://` (not `https://`) entry won't load given
+`https://app-registry.edu-sharing.com/servers.php?version=3.0` (`ServerRegistry.kt`,
+`APP_VERSION` constant) — the `version` query param appears to be the app-registry's
+compatibility gate (matching the `min`/`max` integer fields some entries carry), so the
+server does that filtering itself and this shell just shows every entry it gets back as-is.
+"Enter your own server" is always appended as the last row and reveals the manual URL-entry
+form (its own "Continue" button) below the list when tapped. Fetch failures (offline,
+unreachable) just leave the list with only that row — manual entry always remains available.
+Note that any listed `http://` (not `https://`) entry won't load given
 `usesCleartextTraffic="false"`.
 
 The SPA (`app-login-page`) handles the actual login.
