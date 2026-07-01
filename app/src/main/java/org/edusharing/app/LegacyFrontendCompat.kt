@@ -26,10 +26,20 @@ import org.json.JSONObject
  *  - Share content itself arrives via `window.plugins.intent.getCordovaIntent(cb)` /
  *    `.setNewIntentHandler(cb)` (the old `cordova-plugin-intent` fork), which then calls
  *    `this.router.navigate([...,'app','share'], {queryParams: data})`.
+ *  - Old `CordovaService.exitApp()` and `onBackKeyDown()` (invoked e.g. by the login page's
+ *    close button, `AppLoginPageComponent.buttonExitApp()`) call `navigator.app.exitApp()`
+ *    directly, with no `window.eduBridge` check — so it silently no-ops without this shim.
+ *    `onBackKeyDown()` itself only runs when the old code's hardware-back handling (a
+ *    `'backbutton'` DOM event, normally fired by real Cordova core) actually fires.
  *
  * Without this shim, an old frontend loaded by this shell never detects app mode, never
- * reaches `deviceready`, and never receives share content — the share-redirect simply never
- * fires.
+ * reaches `deviceready`, never receives share content, and its close/back button silently
+ * does nothing.
+ *
+ * OAuth token storage needs no shim at all: old `getPermanentStorage`/`setPermanentStorage`
+ * use `window.localStorage` unconditionally on Android (the `NativeStorage` plugin fallback
+ * is gated behind `isIOS()`, which is `false` here) — this shell's real WebView
+ * `localStorage` already satisfies that path.
  *
  * Deliberately minimal: this fakes just enough of the old `intent` object shape
  * (`.type`, `.extras['android.intent.extra.TEXT'|'STREAM']`, `.clipItems[0].file`, and a
@@ -91,6 +101,31 @@ object LegacyFrontendCompat {
                 document.dispatchEvent(new Event('deviceready'));
                 if (++deviceReadyAttempts >= 100) { clearInterval(deviceReadyTimer); }
             }, 200);
+
+            // navigator.app.exitApp()/backHistory() -- old CordovaService.exitApp() and its
+            // onBackKeyDown() call these directly (no window.eduBridge check). Route them to
+            // the real, already-injected eduBridge native binding.
+            if (!navigator.app) {
+                navigator.app = {
+                    exitApp: function() {
+                        if (window.eduBridge && window.eduBridge.exitApp) {
+                            window.eduBridge.exitApp();
+                        }
+                    },
+                    backHistory: function() { history.back(); },
+                };
+            }
+
+            // Old CordovaService listens for a custom 'backbutton' DOM event (normally fired
+            // by the real Cordova core on the hardware/gesture back press) to run its own
+            // back/close logic (including the exitApp() path above after finishing a share).
+            // Track whether it actually registered a listener so MainActivity's back handler
+            // knows whether dispatching this event will do anything.
+            var realAddEventListener = document.addEventListener.bind(document);
+            document.addEventListener = function(type, listener, options) {
+                if (type === 'backbutton') { window.__eduSharingHasBackButtonListener = true; }
+                return realAddEventListener(type, listener, options);
+            };
         })();
     """
 

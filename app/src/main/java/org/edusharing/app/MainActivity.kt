@@ -340,8 +340,15 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 return
             }
             // Let the SPA decide (WebView history vs. exit); fall back to native behaviour.
+            // Checks eduBridgeOnBack first (current contract), then falls back to legacy
+            // compat's tracked 'backbutton' listener (see LegacyFrontendCompat) for an old,
+            // not-yet-updated frontend -- NOT part of the eduBridge contract.
             webView.evaluateJavascript(
-                "(function(){if(window.eduBridgeOnBack){window.eduBridgeOnBack();return 'handled';}return 'unhandled';})()",
+                "(function(){" +
+                    "if(window.eduBridgeOnBack){window.eduBridgeOnBack();return 'handled';}" +
+                    "if(window.__eduSharingHasBackButtonListener){document.dispatchEvent(new Event('backbutton'));return 'handled';}" +
+                    "return 'unhandled';" +
+                    "})()",
             ) { result ->
                 if (result == null || result == "\"unhandled\"" || result == "null") {
                     if (webView.canGoBack()) webView.goBack() else finish()
