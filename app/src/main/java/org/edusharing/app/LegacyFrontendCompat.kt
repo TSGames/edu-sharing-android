@@ -31,10 +31,14 @@ import org.json.JSONObject
  *    directly, with no `window.eduBridge` check — so it silently no-ops without this shim.
  *    `onBackKeyDown()` itself only runs when the old code's hardware-back handling (a
  *    `'backbutton'` DOM event, normally fired by real Cordova core) actually fires.
+ *  - Old `CordovaService.getPhotoFromCamera()` (used e.g. by the create-menu's camera option,
+ *    `CreateMenuComponent.openCamera()`) calls `navigator.camera.getPicture(...)` after a
+ *    `cordova.plugins.permissions` check, neither of which exist here — the permission check
+ *    throws (caught, silently swallowed), so the whole call has no visible effect.
  *
  * Without this shim, an old frontend loaded by this shell never detects app mode, never
- * reaches `deviceready`, never receives share content, and its close/back button silently
- * does nothing.
+ * reaches `deviceready`, never receives share content, its close/back button silently does
+ * nothing, and taking a photo has no effect.
  *
  * OAuth token storage needs no shim at all: old `getPermanentStorage`/`setPermanentStorage`
  * use `window.localStorage` unconditionally on Android (the `NativeStorage` plugin fallback
@@ -52,10 +56,11 @@ import org.json.JSONObject
  * update, which resolves via its error path even when left unimplemented.
  *
  * Safe/inert for an eduBridge-aware frontend: `registerOnShareContent()`'s `eduBridge` branch
- * returns before ever reaching the `window.plugins.intent`-based code this shim feeds, and
- * `isReallyRunningCordova()`/`isIOS()`/`isAndroid()` all check `this.platform` (set from
- * `window.eduBridge`) first. Repeatedly firing `deviceready` is likewise a no-op there since
- * `deviceIsReady` is already `true` by the time it matters.
+ * returns before ever reaching the `window.plugins.intent`-based code this shim feeds,
+ * `getPhotoFromCamera()`'s `eduBridge?.takePhoto` branch likewise returns before ever touching
+ * `navigator.camera`, and `isReallyRunningCordova()`/`isIOS()`/`isAndroid()` all check
+ * `this.platform` (set from `window.eduBridge`) first. Repeatedly firing `deviceready` is
+ * likewise a no-op there since `deviceIsReady` is already `true` by the time it matters.
  */
 object LegacyFrontendCompat {
     private const val TAG = "LegacyFrontendCompat"
@@ -126,6 +131,62 @@ object LegacyFrontendCompat {
                 if (type === 'backbutton') { window.__eduSharingHasBackButtonListener = true; }
                 return realAddEventListener(type, listener, options);
             };
+
+            // navigator.camera.getPicture()/cordova.plugins.permissions -- old
+            // CordovaService.getPhotoFromCamera() (e.g. the create-menu's camera option) calls
+            // these directly. Route the actual capture through the real, already-injected
+            // eduBridge.takePhoto() native binding; the permission stub always reports granted
+            // since native capture delegates to the system camera app and needs no runtime
+            // permission of its own.
+            if (!window.cordova.plugins) { window.cordova.plugins = {}; }
+            if (!window.cordova.plugins.permissions) {
+                window.cordova.plugins.permissions = {
+                    CAMERA: 'android.permission.CAMERA',
+                    checkPermission: function(perm, successCb) {
+                        if (successCb) { successCb({ hasPermission: true }); }
+                    },
+                    requestPermission: function(perm, successCb) {
+                        if (successCb) { successCb({ hasPermission: true }); }
+                    },
+                };
+            }
+            if (!navigator.camera) {
+                var pendingCameraCallbacks = null;
+                navigator.camera = {
+                    DestinationType: { DATA_URL: 0, FILE_URI: 1 },
+                    PictureSourceType: { PHOTOLIBRARY: 0, CAMERA: 1, SAVEDPHOTOALBUM: 2 },
+                    EncodingType: { JPEG: 0, PNG: 1 },
+                    getPicture: function(successCb, errorCb, options) {
+                        if (pendingCameraCallbacks) {
+                            if (errorCb) { errorCb('a photo capture is already in progress'); }
+                            return;
+                        }
+                        if (!window.eduBridge || !window.eduBridge.takePhoto) {
+                            if (errorCb) { errorCb('camera not available'); }
+                            return;
+                        }
+                        pendingCameraCallbacks = { successCb: successCb, errorCb: errorCb };
+                        window.eduBridge.takePhoto();
+                    },
+                };
+                if (!window.eduBridgeOnPhotoTaken) {
+                    window.eduBridgeOnPhotoTaken = function(json) {
+                        var callbacks = pendingCameraCallbacks;
+                        pendingCameraCallbacks = null;
+                        if (!callbacks) { return; }
+                        try {
+                            var payload = JSON.parse(json);
+                            if (payload.success) {
+                                if (callbacks.successCb) { callbacks.successCb(payload.stream); }
+                            } else if (callbacks.errorCb) {
+                                callbacks.errorCb(payload.error || 'unknown error');
+                            }
+                        } catch (e) {
+                            if (callbacks.errorCb) { callbacks.errorCb('parse error'); }
+                        }
+                    };
+                }
+            }
         })();
     """
 

@@ -57,6 +57,16 @@ app" *and* still gets share content redirected to `AppSharePageComponent`:
   fallback alongside the existing `eduBridgeOnBack` check — only when the tracked flag
   confirms a listener is actually present, so it doesn't guess and risk a double back
   navigation.
+- A `navigator.camera.getPicture(win, fail, options)` stub plus a `cordova.plugins.permissions`
+  stub (always reports the `CAMERA` permission granted — native capture delegates to the
+  system camera app and needs no runtime permission of its own). Old
+  `CordovaService.getPhotoFromCamera()` (e.g. the create-menu's camera option,
+  `CreateMenuComponent.openCamera()`) calls these directly; without them the permission check
+  throws (silently swallowed), so taking a photo had no visible effect at all. The stub routes
+  the actual capture through the same already-injected `window.eduBridge.takePhoto()` binding
+  and defines `window.eduBridgeOnPhotoTaken` itself to receive the result (old frontend never
+  defines it, so there's no conflict with an eduBridge-aware frontend's own use of that
+  callback).
 
 No shim is needed for OAuth token storage: old `getPermanentStorage`/`setPermanentStorage`
 already use `window.localStorage` unconditionally on Android (the `NativeStorage` plugin
