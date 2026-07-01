@@ -194,6 +194,14 @@ meaningful here and every entry is shown regardless. Note that any listed `http:
 
 The SPA (`app-login-page`) handles the actual login.
 
+Switching servers reruns `startShell()` on the *same* `WebView` instance (`loadUrl()` alone
+doesn't reset its back/forward history), so without care the hardware/gesture back button
+could navigate into pages from the previously configured server. `startShell()` sets
+`pendingHistoryClear`, and `shellWebViewClient.onPageFinished` calls `webView.clearHistory()`
+once the new server's page has actually loaded (not immediately after `loadUrl()`, which
+isn't reliable) and resets the flag — a one-shot clear that doesn't affect normal in-app
+(SPA/pushState) navigation, since that doesn't trigger `onPageFinished` at all.
+
 ## Project layout
 
 ```

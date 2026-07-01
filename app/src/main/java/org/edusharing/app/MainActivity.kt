@@ -47,6 +47,9 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
     private var backgroundedAt = 0L
 
+    // Set before loading a (possibly new) server; consumed in onPageFinished, see startShell().
+    private var pendingHistoryClear = false
+
     // Path of the temp file the camera app is currently writing to, if a capture is in flight.
     // Persisted across process death (the camera app can outlive this activity's process).
     private var pendingPhotoFile: File? = null
@@ -123,6 +126,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         setupWebView()
         // A share may have cold-started us: capture it before the page asks for it.
         prepareColdShare(intent)
+        // startShell() re-runs on the SAME WebView instance when the user switches servers
+        // (ServerUrlActivity's reset flow) -- loadUrl() alone doesn't clear the WebView's own
+        // back/forward history, so without this the hardware/gesture back button could
+        // navigate into pages from the PREVIOUS server. Cleared once the new page has actually
+        // loaded (see onPageFinished), not immediately after loadUrl(), which isn't reliable.
+        pendingHistoryClear = true
         webView.loadUrl(serverUrl)
     }
 
@@ -440,6 +449,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
+            if (pendingHistoryClear) {
+                pendingHistoryClear = false
+                view.clearHistory()
+            }
             view.evaluateJavascript(
                 "if(window.eduBridgeOnReady){window.eduBridgeOnReady();}",
                 null,
