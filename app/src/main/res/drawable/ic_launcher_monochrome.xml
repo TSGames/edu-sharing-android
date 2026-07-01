@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Themed-icon (Android 13+) silhouette: just the honeycomb mark, single color (the system
-    replaces it with the user's theme tint). The BETA badge is dropped here since a
+    replaces it with the user's theme tint). The POC badge is dropped here since a
     single-tone rendering can't distinguish badge-fill from letter-cutout, so it would only
-    read as a shapeless blob.
+    read as a shapeless blob. Same geometry as ic_launcher_foreground.xml (fitted to the
+    66dp-diameter adaptive-icon safe zone).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -12,11 +13,11 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#000000"
-        android:pathData="M55.8,34.4 L46.55,50.42 L28.05,50.42 L18.8,34.4 L28.05,18.38 L46.55,18.38 Z" />
+        android:pathData="M59.702,38.747 L52.488,51.242 L38.06,51.242 L30.846,38.747 L38.06,26.252 L52.488,26.252 Z" />
     <path
         android:fillColor="#000000"
-        android:pathData="M89.4,54.0 L80.15,70.02 L61.65,70.02 L52.4,54.0 L61.65,37.98 L80.15,37.98 Z" />
+        android:pathData="M85.879,54.0 L78.665,66.495 L64.237,66.495 L57.023,54.0 L64.237,41.505 L78.665,41.505 Z" />
     <path
         android:fillColor="#000000"
-        android:pathData="M55.8,73.5 L46.55,89.52 L28.05,89.52 L18.8,73.5 L28.05,57.48 L46.55,57.48 Z" />
+        android:pathData="M59.702,69.253 L52.488,81.748 L38.06,81.748 L30.846,69.253 L38.06,56.758 L52.488,56.758 Z" />
 </vector>
