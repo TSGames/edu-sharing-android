@@ -25,6 +25,23 @@ contract is specified in the community repository:
 The frontend side is `Frontend/src/app/services/cordova.service.ts`, which reads only this
 bridge (no Cordova/Capacitor plugins).
 
+## Legacy frontend compatibility (transitional, NOT part of the contract)
+
+`LegacyFrontendCompat.kt` fakes just enough of the old Cordova globals (`window.cordova`,
+`window.device.platform`) so a server that is still running the **old, pre-eduBridge**
+`cordova.service.ts` still detects "running in the app" (its `isRunningCordova()` otherwise
+returns `false` in this shell, since it looks for those globals / an `"ionic / edu-sharing-app"`
+User-Agent marker this shell doesn't send). It's injected via
+`WebViewCompat.addDocumentStartJavaScript`, scoped to the server origin, and is deliberately
+minimal — it does not reimplement any real Cordova plugin, so an old frontend still won't get
+share handling from this shell, only app-mode detection.
+
+This is purely a stop-gap for native-app/server-frontend version skew and is inert for any
+frontend that has adopted eduBridge (verified: its `isIOS()`/`isAndroid()`/
+`isReallyRunningCordova()` all check `this.platform`, set from `window.eduBridge`, before ever
+touching `window.cordova`/`window.device`). Remove it once all deployments are known to run an
+eduBridge-aware frontend build.
+
 ## The `window.eduBridge` contract (as implemented here)
 
 ### JS → native (`EduBridge.kt`, `@JavascriptInterface`)
@@ -116,6 +133,7 @@ app/src/main/
 │   ├── SharePayload.kt          # share payload model + JSON
 │   ├── PhotoCapture.kt          # takePhoto(): temp file, EXIF rotation, downsampling
 │   ├── PhotoResultPayload.kt    # takePhoto() result payload model + JSON
+│   ├── LegacyFrontendCompat.kt  # transitional, NOT part of the eduBridge contract (see above)
 │   └── IntentExt.kt             # getParcelableExtra compat helper
 └── res/                         # layouts, strings, theme, adaptive launcher icon, file_paths.xml
 ```

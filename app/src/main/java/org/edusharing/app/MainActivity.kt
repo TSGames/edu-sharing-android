@@ -143,10 +143,17 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             userAgentString = buildUserAgent(userAgentString)
         }
 
+        // ---- eduBridge: the current, documented contract (eduBridge-contract.md) ----------
         webView.addJavascriptInterface(
             EduBridge(this, contentResolver, BuildConfig.VERSION_NAME),
             EduBridge.NAME,
         )
+
+        // ---- Legacy compat: NOT part of the eduBridge contract, see LegacyFrontendCompat --
+        // Only helps a server frontend that hasn't been updated to eduBridge yet detect "app
+        // mode"; an eduBridge-aware frontend never reads window.cordova/window.device.
+        LegacyFrontendCompat.installIfSupported(webView, originOf(serverUrl))
+
         webView.webViewClient = shellWebViewClient
         webView.webChromeClient = shellChromeClient
         webView.setDownloadListener { url, _, _, _, _ -> openExternally(url) }
@@ -158,6 +165,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
      */
     private fun buildUserAgent(base: String): String =
         "$base edu-sharing-app/${BuildConfig.VERSION_NAME} android"
+
+    private fun originOf(url: String): String {
+        val uri = Uri.parse(url)
+        val port = if (uri.port != -1) ":${uri.port}" else ""
+        return "${uri.scheme}://${uri.host}$port"
+    }
 
     // ---- Share handling -----------------------------------------------------------------
 
