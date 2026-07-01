@@ -394,7 +394,17 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             // Keep same-origin (edu-sharing) navigation inside the WebView; hand the rest to
             // the system (mailto:, tel:, market:, external https, ...).
             if (url.scheme == "http" || url.scheme == "https") {
-                return if (isSameHost(url)) false else openExternally(url.toString())
+                if (isSameHost(url)) return false
+                // Legacy compat (not part of eduBridge): old CordovaService.restartCordova()'s
+                // non-eduBridge-aware fallback (login page's top-right cancel button ->
+                // buttonLoginBack()) navigates to this fixed external host to "reset" the app.
+                // Redirect it back to our own server root instead of opening an unrelated
+                // external browser page with no way back into the app.
+                if (isLegacyAppRegistryResetUrl(url)) {
+                    webView.loadUrl(legacyResetUrl(url))
+                    return true
+                }
+                return openExternally(url.toString())
             }
             return openExternally(url.toString())
         }
@@ -430,6 +440,15 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     private fun isSameHost(url: Uri): Boolean {
         val serverHost = Uri.parse(serverUrl).host ?: return false
         return url.host.equals(serverHost, ignoreCase = true)
+    }
+
+    private fun isLegacyAppRegistryResetUrl(url: Uri): Boolean =
+        url.host.equals("app-registry.edu-sharing.com", ignoreCase = true)
+
+    /** Rewrites the old app-registry reset URL onto our own server root, keeping its query. */
+    private fun legacyResetUrl(url: Uri): String {
+        val query = url.query
+        return if (query.isNullOrEmpty()) serverUrl else "$serverUrl/?$query"
     }
 
     /** Opens a URL outside the WebView; returns true (URL was consumed by this shell). */

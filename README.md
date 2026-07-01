@@ -63,6 +63,17 @@ already use `window.localStorage` unconditionally on Android (the `NativeStorage
 fallback is gated behind `isIOS()`, which this shim's `window.device.platform = 'Android'`
 makes `false`) — this shell's real WebView `localStorage` already satisfies that path.
 
+A related (non-JS) intercept lives directly in `MainActivity.shellWebViewClient`, not in
+`LegacyFrontendCompat.kt`: the login page's top-right cancel button
+(`AppLoginPageComponent.buttonLoginBack()`) calls `CordovaService.restartCordova()`, whose old
+implementation has no `window.eduBridge` check and falls through to
+`window.location.replace('http://app-registry.edu-sharing.com/ng/?reset=true...')` — an
+external host unrelated to the configured server. Left alone, this shell would open it in an
+external browser with no way back into the app. `shouldOverrideUrlLoading` recognizes that
+specific host and rewrites the navigation onto the configured server's root instead
+(`<serverUrl>/?<same query>`), matching what the eduBridge-aware `restartCordova()` already
+does for a current frontend.
+
 It deliberately does **not** implement `resolveLocalFileSystemURL`/`NativeStorage`/any other
 legacy plugin — `AppSharePageComponent` (unchanged across old and new) already reads
 `getLastIntent().stream` directly for file content, so that's sufficient; `getFileAsBlob()`'s
