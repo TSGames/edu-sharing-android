@@ -85,7 +85,7 @@ feeds). Remove it once all deployments are known to run an eduBridge-aware front
 | `getAppVersion()` | e.g. `"1.0.0"` | `BuildConfig.VERSION_NAME` |
 | `getInitialShare()` | share JSON or `""` | cold-start share, held until pulled (pull model) |
 | `consumeShare()` | – | marks the cold share processed |
-| `exitApp()` | – | `finishAndRemoveTask()` |
+| `exitApp()` | – | on the login page (`components/app`): clears the stored server URL and reopens `ServerUrlActivity`; anywhere else: `finishAndRemoveTask()` (see below) |
 | `readFile(uri)` | base64 or `""` | reads a `content://` URI via `ContentResolver` |
 | `takePhoto()` | – | starts a native camera capture; **does not block** (see below) |
 
@@ -113,6 +113,14 @@ use and the JS payload size bounded:
 ```json
 { "success": false, "error": "CANCELLED" }
 ```
+
+`exitApp()` is shared by two unrelated SPA flows that give the shell no way to distinguish
+them other than which screen is showing: the login page's close button
+(`AppLoginPageComponent.buttonExitApp()`), where the user wants to pick a different server,
+not leave the app; and "return to the originating app" after finishing a share
+(`AppSharePageComponent`'s `OnBackBehaviour.closeApp`), where actually finishing the activity
+is correct. `MainActivity.onExitRequested()` checks the current WebView URL (`components/app`,
+the app-login-page route, vs. anything else) to decide between the two.
 
 ### Share payload JSON
 

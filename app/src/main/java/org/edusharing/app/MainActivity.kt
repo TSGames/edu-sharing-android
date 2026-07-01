@@ -245,8 +245,34 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         pendingShare = null
     }
 
+    /**
+     * exitApp() is shared by two unrelated flows in the SPA (both old and new CordovaService):
+     * "close" on the login page (`AppLoginPageComponent.buttonExitApp()`), where the user
+     * wants to pick a different server, not leave the app entirely; and "return to the
+     * originating app" after finishing a share (`AppSharePageComponent`'s
+     * `OnBackBehaviour.closeApp`), where actually finishing the activity is correct. The SPA
+     * gives us no way to distinguish the two other than which screen is showing.
+     */
     override fun onExitRequested() {
-        runOnUiThread { finishAndRemoveTask() }
+        runOnUiThread {
+            if (isOnLoginPage()) {
+                resetToServerSelection()
+            } else {
+                finishAndRemoveTask()
+            }
+        }
+    }
+
+    private fun isOnLoginPage(): Boolean {
+        if (!::webView.isInitialized) return false
+        val path = webView.url?.let { Uri.parse(it).path } ?: return false
+        // The app-login-page route (components/app), not its components/app/share child.
+        return path.trimEnd('/').endsWith("/components/app")
+    }
+
+    private fun resetToServerSelection() {
+        ServerConfig.clear(this)
+        serverUrlLauncher.launch(Intent(this, ServerUrlActivity::class.java))
     }
 
     override fun onTakePhotoRequested() {
