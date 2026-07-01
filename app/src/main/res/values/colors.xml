@@ -2,4 +2,12 @@
 <resources>
     <!-- White to match the gaps in the edu-sharing honeycomb mark (ic_launcher_foreground). -->
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!--
+        edu-sharing brand blue. Fills the reserved strip behind the status bar / gesture nav
+        area (see activity_main.xml + MainActivity.setupWebView's inset margin), so that area
+        reads as an intentional themed bar instead of blank/blended space. The SPA itself is
+        white-label/branding-token driven with no single fixed color we could read natively,
+        so this is a fixed, reasonable default rather than a per-tenant match.
+    -->
+    <color name="chrome_theme_color">#00689B</color>
 </resources>

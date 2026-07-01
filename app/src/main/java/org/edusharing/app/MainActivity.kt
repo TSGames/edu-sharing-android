@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -12,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -85,7 +87,14 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         // android:statusBarColor/navigationBarColor theme attributes, which are no-ops on
         // apps targeting API 35+ (edge-to-edge is enforced there) and would otherwise leave
         // unstyled bars ("stripes") at the top/bottom of the screen.
-        enableEdgeToEdge()
+        // Force light (white) system bar icons: the reserved strip behind them always shows
+        // chrome_theme_color (a dark blue), regardless of the system's light/dark setting, so
+        // SystemBarStyle.auto's system-theme-based icon choice would risk poor contrast.
+        val chromeColor = getColor(R.color.chrome_theme_color)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(chromeColor),
+            navigationBarStyle = SystemBarStyle.dark(chromeColor),
+        )
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -119,12 +128,22 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
     private fun setupWebView() {
         webView = findViewById(R.id.webview)
-        // We draw edge-to-edge (enableEdgeToEdge() in onCreate); pad the WebView itself for
-        // the system bars so page content/controls aren't hidden under the status bar or
-        // gesture nav area, instead of the removed fitsSystemWindows layout attribute.
+        // We draw edge-to-edge (enableEdgeToEdge() in onCreate). Use a MARGIN, not padding, to
+        // keep the system bars clear: WebView's internal Chromium compositor positions
+        // `position: fixed` CSS content (e.g. the SPA's toolbar) relative to the WebView's own
+        // drawing surface, ignoring Android-level View.setPadding() -- so a padded WebView
+        // would still show fixed-position page content jammed under the status bar. A margin
+        // actually moves the WebView's bounds, so its whole viewport (fixed content included)
+        // starts below the status bar / gesture nav area. The reserved strip shows the root
+        // layout's themed background (activity_main.xml) instead of empty/blended space.
         ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            val params = view.layoutParams as ViewGroup.MarginLayoutParams
+            params.topMargin = bars.top
+            params.bottomMargin = bars.bottom
+            params.leftMargin = bars.left
+            params.rightMargin = bars.right
+            view.layoutParams = params
             WindowInsetsCompat.CONSUMED
         }
         CookieManager.getInstance().apply {

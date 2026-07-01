@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/chrome_theme_color">
 
-    <!-- System-bar insets are applied as WebView padding in code (see MainActivity.setupWebView),
-         not via fitsSystemWindows, which isn't reliable under enforced edge-to-edge (API 35+). -->
+    <!-- System-bar insets are applied as a WebView margin in code (see
+         MainActivity.setupWebView) so the reserved strip shows this layout's themed
+         background, not WebView padding: position-fixed page content ignores WebView
+         padding and would otherwise still render under the status bar. -->
     <WebView
         android:id="@+id/webview"
         android:layout_width="match_parent"
