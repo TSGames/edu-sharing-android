@@ -12,8 +12,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -77,6 +80,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate()/setContentView(): draws behind the system bars
+        // consistently across API levels instead of relying on the deprecated
+        // android:statusBarColor/navigationBarColor theme attributes, which are no-ops on
+        // apps targeting API 35+ (edge-to-edge is enforced there) and would otherwise leave
+        // unstyled bars ("stripes") at the top/bottom of the screen.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -110,6 +119,14 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
     private fun setupWebView() {
         webView = findViewById(R.id.webview)
+        // We draw edge-to-edge (enableEdgeToEdge() in onCreate); pad the WebView itself for
+        // the system bars so page content/controls aren't hidden under the status bar or
+        // gesture nav area, instead of the removed fitsSystemWindows layout attribute.
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)

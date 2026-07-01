@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base application theme. Uses a Material 3 DayNight parent so the shell follows the
-         system light/dark setting; the SPA controls its own in-page styling. -->
-    <style name="Theme.EduSharing" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:statusBarColor">@color/ic_launcher_background</item>
-    </style>
+         system light/dark setting; the SPA controls its own in-page styling.
+         No android:statusBarColor/navigationBarColor here: those are no-ops once the app
+         targets API 35+ (edge-to-edge enforced) and would leave unstyled bars ("stripes")
+         instead of the intended color. MainActivity.enableEdgeToEdge() + WebView inset
+         padding replace them. -->
+    <style name="Theme.EduSharing" parent="Theme.Material3.DayNight.NoActionBar" />
 </resources>
