@@ -5,6 +5,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+        takePhoto() delegates to the system camera app via an implicit ACTION_IMAGE_CAPTURE
+        intent (no CAMERA permission of our own needed) — package-visibility declaration
+        required on Android 11+ to resolve that intent.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EduSharingApp"
         android:allowBackup="true"
@@ -65,6 +76,20 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <!--
+            Exposes the cache-held temp photo file to the camera app for takePhoto() without
+            granting it broader file-system access.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

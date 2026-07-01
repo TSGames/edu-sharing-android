@@ -15,6 +15,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -41,6 +42,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
     private var backgroundedAt = 0L
 
+    // Path of the temp file the camera app is currently writing to, if a capture is in flight.
+    // Persisted across process death (the camera app can outlive this activity's process).
+    private var pendingPhotoFile: File? = null
+
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileChooserLauncher =
@@ -66,11 +71,19 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             }
         }
 
+    private val takePhotoLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+            handlePhotoResult(captured)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         onBackPressedDispatcher.addCallback(this, backCallback)
+        savedInstanceState?.getString(STATE_PENDING_PHOTO_PATH)?.let {
+            pendingPhotoFile = File(it)
+        }
 
         val configured = ServerConfig.getServerUrl(this)
         if (ServerConfig.isUsable(configured)) {
@@ -80,6 +93,11 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             // First launch: let the user choose a server before loading the SPA.
             serverUrlLauncher.launch(Intent(this, ServerUrlActivity::class.java))
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingPhotoFile?.let { outState.putString(STATE_PENDING_PHOTO_PATH, it.absolutePath) }
     }
 
     private fun startShell() {
@@ -193,6 +211,68 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         runOnUiThread { finishAndRemoveTask() }
     }
 
+    override fun onTakePhotoRequested() {
+        runOnUiThread { startCameraCapture() }
+    }
+
+    // ---- Camera capture (takePhoto) -------------------------------------------------------
+
+    private fun startCameraCapture() {
+        if (pendingPhotoFile != null) {
+            // A capture is already in flight; CordovaService also guards against concurrent
+            // calls, this is just the native-side backstop.
+            return
+        }
+        try {
+            val file = PhotoCapture.createTempImageFile(this)
+            pendingPhotoFile = file
+            takePhotoLauncher.launch(PhotoCapture.uriForFile(this, file))
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to start camera capture", e)
+            pendingPhotoFile?.let { PhotoCapture.deleteQuietly(it) }
+            pendingPhotoFile = null
+            deliverPhotoResult(PhotoResultPayload.failure("ERROR"))
+        }
+    }
+
+    private fun handlePhotoResult(captured: Boolean) {
+        val file = pendingPhotoFile
+        pendingPhotoFile = null
+        if (!captured || file == null) {
+            file?.let { PhotoCapture.deleteQuietly(it) }
+            deliverPhotoResult(PhotoResultPayload.failure("CANCELLED"))
+            return
+        }
+        ioExecutor.execute {
+            val payload = try {
+                val base64 = PhotoCapture.readAsRotatedJpegBase64(file)
+                if (base64 != null) {
+                    PhotoResultPayload(success = true, fileName = file.name, stream = base64)
+                } else {
+                    PhotoResultPayload.failure("ERROR")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "reading captured photo failed", e)
+                PhotoResultPayload.failure("ERROR")
+            } finally {
+                PhotoCapture.deleteQuietly(file)
+            }
+            deliverPhotoResult(payload)
+        }
+    }
+
+    private fun deliverPhotoResult(payload: PhotoResultPayload) {
+        val quoted = JSONObject.quote(payload.toJson())
+        runOnUiThread {
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "if(window.eduBridgeOnPhotoTaken){window.eduBridgeOnPhotoTaken($quoted);}",
+                    null,
+                )
+            }
+        }
+    }
+
     // ---- Lifecycle callbacks forwarded to the SPA ----------------------------------------
 
     override fun onPause() {
@@ -303,5 +383,6 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         private const val TAG = "MainActivity"
         private const val SHARE_TIMEOUT_SECONDS = 15L
         private const val RESUME_THRESHOLD_MILLIS = 60_000L
+        private const val STATE_PENDING_PHOTO_PATH = "pending_photo_path"
     }
 }

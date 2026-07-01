@@ -37,6 +37,7 @@ bridge (no Cordova/Capacitor plugins).
 | `consumeShare()` | – | marks the cold share processed |
 | `exitApp()` | – | `finishAndRemoveTask()` |
 | `readFile(uri)` | base64 or `""` | reads a `content://` URI via `ContentResolver` |
+| `takePhoto()` | – | starts a native camera capture; **does not block** (see below) |
 
 ### Native → JS (called on the WebView when defined)
 
@@ -46,6 +47,22 @@ bridge (no Cordova/Capacitor plugins).
 | `window.eduBridgeOnShare(payloadJson)` | a share arrived while the app was running (warm) |
 | `window.eduBridgeOnResume()` | returned from background after > 1 min |
 | `window.eduBridgeOnBack()` | hardware back button (SPA decides history vs. exit) |
+| `window.eduBridgeOnPhotoTaken(payloadJson)` | result of a `takePhoto()` capture |
+
+`takePhoto()` is the one bridge method that isn't synchronous: a camera capture can take
+arbitrarily long (user interaction), so blocking the calling JS thread for it risked a "page
+unresponsive" WebView warning. It returns immediately and `MainActivity` delivers the result
+later via `eduBridgeOnPhotoTaken`, using `ActivityResultContracts.TakePicture()` + a
+`FileProvider`-exposed cache file (`PhotoCapture.kt`). The captured JPEG is EXIF-rotated and
+downsampled to at most 2048px on the longer side before being base64-encoded, to keep memory
+use and the JS payload size bounded:
+
+```json
+{ "success": true, "mimetype": "image/jpeg", "fileName": "photo_….jpg", "stream": "<base64>" }
+```
+```json
+{ "success": false, "error": "CANCELLED" }
+```
 
 ### Share payload JSON
 
@@ -88,17 +105,19 @@ The SPA (`app-login-page`) handles the actual login.
 
 ```
 app/src/main/
-├── AndroidManifest.xml          # INTERNET permission + ACTION_SEND intent filters
+├── AndroidManifest.xml          # permissions, ACTION_SEND filters, FileProvider
 ├── java/org/edusharing/app/
 │   ├── EduSharingApp.kt         # Application (enables WebView debugging in debug builds)
-│   ├── MainActivity.kt          # WebView host + share/lifecycle bridging
+│   ├── MainActivity.kt          # WebView host + share/lifecycle/camera bridging
 │   ├── EduBridge.kt             # window.eduBridge @JavascriptInterface
 │   ├── ServerConfig.kt          # server URL persistence
 │   ├── ServerUrlActivity.kt     # first-run server picker
 │   ├── ShareIntentParser.kt     # Intent -> SharePayload (reads content:// to base64)
 │   ├── SharePayload.kt          # share payload model + JSON
+│   ├── PhotoCapture.kt          # takePhoto(): temp file, EXIF rotation, downsampling
+│   ├── PhotoResultPayload.kt    # takePhoto() result payload model + JSON
 │   └── IntentExt.kt             # getParcelableExtra compat helper
-└── res/                         # layouts, strings, theme, adaptive launcher icon
+└── res/                         # layouts, strings, theme, adaptive launcher icon, file_paths.xml
 ```
 
 ## Build

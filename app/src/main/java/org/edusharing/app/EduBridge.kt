@@ -30,6 +30,13 @@ class EduBridge(
 
         /** Closes the app (UI thread). */
         fun onExitRequested()
+
+        /**
+         * Starts a native camera capture (UI thread) and delivers the result later via
+         * `window.eduBridgeOnPhotoTaken` — never blocks the calling JS thread (see
+         * eduBridge-contract.md §2, "Ausnahme vom Sync-Muster").
+         */
+        fun onTakePhotoRequested()
     }
 
     @JavascriptInterface
@@ -66,6 +73,16 @@ class EduBridge(
         } catch (e: Exception) {
             Log.w(TAG, "readFile failed for $uri", e)
             ""
+        }
+    }
+
+    /** Fire-and-forget: kicks off the native camera flow; result arrives via the callback. */
+    @JavascriptInterface
+    fun takePhoto() {
+        try {
+            host.onTakePhotoRequested()
+        } catch (e: Exception) {
+            Log.w(TAG, "takePhoto failed to start", e)
         }
     }
 

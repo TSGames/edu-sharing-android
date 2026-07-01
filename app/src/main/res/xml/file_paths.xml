@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Must match PhotoCapture.createTempImageFile's cacheDir/images subfolder. -->
+    <cache-path name="captured_images" path="images/" />
+</paths>
