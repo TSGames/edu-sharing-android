@@ -146,6 +146,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             view.layoutParams = params
             WindowInsetsCompat.CONSUMED
         }
+        // setOnApplyWindowInsetsListener only fires on the NEXT insets dispatch -- if the
+        // initial one already happened before this listener was attached (quite possible here,
+        // since setupWebView() can run after the window's first layout pass), the callback
+        // above would otherwise never run at all, leaving the WebView with no margin and
+        // content still jammed under the status bar. Force an immediate redelivery.
+        ViewCompat.requestApplyInsets(webView)
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
