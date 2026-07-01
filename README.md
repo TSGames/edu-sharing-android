@@ -178,6 +178,16 @@ On first launch `ServerUrlActivity` asks for the edu-sharing server URL and stor
 ./gradlew assembleRelease -PeduSharingDefaultServerUrl=https://repository.example.org
 ```
 
+Alongside manual entry, `ServerUrlActivity` fetches a quick-pick list of publicly known
+servers from `https://app-registry.edu-sharing.com/servers.php` (`ServerRegistry.kt`) and
+shows it as tappable rows below the URL field (tapping one fills the field; the user still
+confirms with Continue). Fetch failures (offline, unreachable) just leave the list empty —
+manual entry always remains available. Some registry entries carry `min`/`max` integer
+fields that appear to gate a compatible app-version range for the old hybrid app's
+version-pinned Cordova bundles; this shell doesn't fetch versioned bundles at all anymore, so
+those fields aren't meaningful here and every entry is shown regardless. Note that any listed
+`http://` (not `https://`) entry won't load given `usesCleartextTraffic="false"`.
+
 The SPA (`app-login-page`) handles the actual login.
 
 ## Project layout

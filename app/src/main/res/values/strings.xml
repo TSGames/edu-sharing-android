@@ -6,4 +6,5 @@
     <string name="server_url_hint">https://repository.example.org</string>
     <string name="server_url_continue">Continue</string>
     <string name="server_url_invalid">Please enter a valid server URL</string>
+    <string name="server_url_known_servers_heading">Or choose a known server</string>
 </resources>
