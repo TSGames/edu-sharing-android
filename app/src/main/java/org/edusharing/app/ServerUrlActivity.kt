@@ -17,9 +17,10 @@ import java.util.concurrent.Executors
  * Native first-run screen to pick the edu-sharing server the WebView should open.
  * Only the server origin is chosen here; the SPA (app-login-page) handles the actual login.
  *
- * Alongside manual entry, offers a quick-pick list of publicly known servers fetched from
- * the app-registry (see [ServerRegistry]) — a native UX convenience, not part of the
- * eduBridge contract.
+ * Primary path: a quick-pick list of publicly known servers fetched from the app-registry
+ * (see [ServerRegistry]) -- tapping a row connects immediately. Manual URL entry is offered
+ * as the secondary/fallback path below it. Neither is part of the eduBridge contract, both
+ * are a native UX convenience.
  */
 class ServerUrlActivity : AppCompatActivity() {
 
@@ -33,16 +34,7 @@ class ServerUrlActivity : AppCompatActivity() {
         input.setText(ServerConfig.getServerUrl(this).orEmpty())
 
         findViewById<Button>(R.id.continueButton).setOnClickListener {
-            val url = input.text.toString()
-            if (!ServerConfig.isUsable(url)) {
-                Toast.makeText(this, R.string.server_url_invalid, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            setResult(
-                Activity.RESULT_OK,
-                Intent().putExtra(EXTRA_SERVER_URL, ServerConfig.normalize(url)),
-            )
-            finish()
+            connect(input.text.toString())
         }
 
         ioExecutor.execute {
@@ -51,11 +43,24 @@ class ServerUrlActivity : AppCompatActivity() {
         }
     }
 
+    /** Validates and returns the chosen server URL to the caller (MainActivity), or toasts. */
+    private fun connect(url: String) {
+        if (!ServerConfig.isUsable(url)) {
+            Toast.makeText(this, R.string.server_url_invalid, Toast.LENGTH_SHORT).show()
+            return
+        }
+        setResult(
+            Activity.RESULT_OK,
+            Intent().putExtra(EXTRA_SERVER_URL, ServerConfig.normalize(url)),
+        )
+        finish()
+    }
+
     private fun populateKnownServers(entries: List<ServerRegistry.Entry>) {
+        findViewById<View>(R.id.knownServersProgress).visibility = View.GONE
         if (entries.isEmpty()) return
         findViewById<View>(R.id.knownServersHeading).visibility = View.VISIBLE
         val container = findViewById<LinearLayout>(R.id.knownServersContainer)
-        val input = findViewById<EditText>(R.id.serverUrlInput)
         val rowPadding = (resources.displayMetrics.density * 12).toInt()
         val background = TypedValue().also {
             theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
@@ -67,7 +72,7 @@ class ServerUrlActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 setBackgroundResource(background.resourceId)
-                setOnClickListener { input.setText(entry.url) }
+                setOnClickListener { connect(entry.url) }
             }
             container.addView(row)
         }

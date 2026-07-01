@@ -16,6 +16,42 @@
             android:textAppearance="?attr/textAppearanceHeadline6"
             android:paddingBottom="16dp" />
 
+        <!-- Primary path: tapping a row connects immediately. Populated at runtime from
+             ServerRegistry.fetch(); this whole section stays gone if the fetch returns
+             nothing (offline, or the registry is unreachable) or while it's in flight. -->
+        <TextView
+            android:id="@+id/knownServersHeading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="4dp"
+            android:text="@string/server_url_known_servers_heading"
+            android:textAppearance="?attr/textAppearanceOverline"
+            android:visibility="gone" />
+
+        <ProgressBar
+            android:id="@+id/knownServersProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:id="@+id/knownServersContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Secondary path: manual entry. -->
+        <TextView
+            android:id="@+id/manualEntryHeading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:paddingBottom="4dp"
+            android:text="@string/server_url_manual_heading"
+            android:textAppearance="?attr/textAppearanceOverline" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -35,26 +71,8 @@
             android:id="@+id/continueButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="16dp"
             android:text="@string/server_url_continue" />
-
-        <!-- Populated at runtime from ServerRegistry.fetch(); both stay gone if the fetch
-             returns nothing (offline, or the registry is unreachable). -->
-        <TextView
-            android:id="@+id/knownServersHeading"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:paddingBottom="4dp"
-            android:text="@string/server_url_known_servers_heading"
-            android:textAppearance="?attr/textAppearanceOverline"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:id="@+id/knownServersContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
 
     </LinearLayout>
 
