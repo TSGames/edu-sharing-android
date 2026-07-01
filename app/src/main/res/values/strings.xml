@@ -2,10 +2,11 @@
 <resources>
     <string name="app_name">edu-sharing</string>
     <string name="server_url_title">edu-sharing server</string>
-    <string name="server_url_prompt">Connect to your edu-sharing server</string>
+    <string name="server_url_picker_title">Where do you want to go?</string>
+    <string name="server_url_picker_subtitle">Choose the server you want to connect to</string>
+    <string name="server_url_section_label">Choose a server</string>
+    <string name="server_url_own_server">Enter your own server</string>
     <string name="server_url_hint">https://repository.example.org</string>
     <string name="server_url_continue">Continue</string>
     <string name="server_url_invalid">Please enter a valid server URL</string>
-    <string name="server_url_known_servers_heading">Choose a server</string>
-    <string name="server_url_manual_heading">Or enter a server URL manually</string>
 </resources>

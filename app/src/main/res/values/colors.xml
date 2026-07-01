@@ -10,4 +10,19 @@
         so this is a fixed, reasonable default rather than a per-tenant match.
     -->
     <color name="chrome_theme_color">#00689B</color>
+
+    <!-- Server picker screen (ServerUrlActivity), modeled on the old app's server list:
+         a fixed-dark header + light section label, regardless of day/night theme. -->
+    <color name="server_picker_header_background">#263238</color>
+    <color name="server_picker_section_background">#EEEEEE</color>
+    <color name="server_picker_own_server_icon">#78909C</color>
+
+    <!-- Deterministic per-server avatar background colors (picked by name hash), since the
+         registry doesn't provide per-server icons/branding. -->
+    <color name="server_avatar_1">#5C6BC0</color>
+    <color name="server_avatar_2">#26A69A</color>
+    <color name="server_avatar_3">#EF5350</color>
+    <color name="server_avatar_4">#AB47BC</color>
+    <color name="server_avatar_5">#66BB6A</color>
+    <color name="server_avatar_6">#FFA726</color>
 </resources>

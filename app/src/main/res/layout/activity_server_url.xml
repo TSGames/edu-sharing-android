@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Rough rebuild of the old app's server picker: fixed-dark header with title/subtitle, a
+    light "choose a server" section label, then a list of server rows (icon + name + URL +
+    chevron), with "Enter your own server" as the last row revealing the manual-entry form.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -6,73 +11,89 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/server_picker_header_background"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/server_url_picker_title"
+                android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/server_url_picker_subtitle"
+                android:textColor="#CCFFFFFF" />
+
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/server_url_prompt"
-            android:textAppearance="?attr/textAppearanceHeadline6"
-            android:paddingBottom="16dp" />
-
-        <!-- Primary path: tapping a row connects immediately. Populated at runtime from
-             ServerRegistry.fetch(); this whole section stays gone if the fetch returns
-             nothing (offline, or the registry is unreachable) or while it's in flight. -->
-        <TextView
-            android:id="@+id/knownServersHeading"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingBottom="4dp"
-            android:text="@string/server_url_known_servers_heading"
-            android:textAppearance="?attr/textAppearanceOverline"
-            android:visibility="gone" />
+            android:background="@color/server_picker_section_background"
+            android:paddingHorizontal="24dp"
+            android:paddingVertical="16dp"
+            android:text="@string/server_url_section_label"
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
 
         <ProgressBar
             android:id="@+id/knownServersProgress"
             style="?android:attr/progressBarStyleSmall"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="start"
-            android:layout_marginBottom="8dp" />
+            android:layout_gravity="center"
+            android:layout_margin="16dp" />
 
+        <!-- Populated at runtime: one row per ServerRegistry.fetch() entry, then always an
+             "Enter your own server" row (see ServerUrlActivity.populateKnownServers). -->
         <LinearLayout
             android:id="@+id/knownServersContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical" />
 
-        <!-- Secondary path: manual entry. -->
-        <TextView
-            android:id="@+id/manualEntryHeading"
+        <!-- Revealed by tapping the "Enter your own server" row. -->
+        <LinearLayout
+            android:id="@+id/manualEntrySection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:paddingBottom="4dp"
-            android:text="@string/server_url_manual_heading"
-            android:textAppearance="?attr/textAppearanceOverline" />
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:visibility="gone">
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/server_url_hint">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/serverUrlInput"
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textUri"
-                android:imeOptions="actionDone"
-                android:maxLines="1" />
+                android:hint="@string/server_url_hint">
 
-        </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/serverUrlInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:imeOptions="actionDone"
+                    android:maxLines="1" />
 
-        <Button
-            android:id="@+id/continueButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/server_url_continue" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Button
+                android:id="@+id/continueButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/server_url_continue" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

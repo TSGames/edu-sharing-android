@@ -181,16 +181,20 @@ On first launch `ServerUrlActivity` asks for the edu-sharing server URL and stor
 ./gradlew assembleRelease -PeduSharingDefaultServerUrl=https://repository.example.org
 ```
 
-The primary path is a quick-pick list of publicly known servers, fetched from
-`https://app-registry.edu-sharing.com/servers.php` (`ServerRegistry.kt`) and shown as
-tappable rows — tapping one connects immediately, no extra confirmation step. Manual URL
-entry is offered below it as the secondary/fallback path (its own "Continue" button). Fetch
-failures (offline, unreachable) just leave the known-servers section hidden — manual entry
-always remains available. Some registry entries carry `min`/`max` integer fields that appear
-to gate a compatible app-version range for the old hybrid app's version-pinned Cordova
-bundles; this shell doesn't fetch versioned bundles at all anymore, so those fields aren't
-meaningful here and every entry is shown regardless. Note that any listed `http://` (not
-`https://`) entry won't load given `usesCleartextTraffic="false"`.
+The screen is a rough rebuild of the old (Ionic) app's server picker: a fixed-dark header
+("Where do you want to go?" / subtitle), a light "Choose a server" section label, then a list
+of rows — each a colored letter-avatar (deterministic per server name, since the registry
+doesn't provide per-server icons), the name, its URL, and a chevron. Tapping a row connects
+immediately, no extra confirmation step. The list is fetched from
+`https://app-registry.edu-sharing.com/servers.php` (`ServerRegistry.kt`); "Enter your own
+server" is always appended as the last row and reveals the manual URL-entry form (its own
+"Continue" button) below the list when tapped. Fetch failures (offline, unreachable) just
+leave the list with only that row — manual entry always remains available. Some registry
+entries carry `min`/`max` integer fields that appear to gate a compatible app-version range
+for the old hybrid app's version-pinned Cordova bundles; this shell doesn't fetch versioned
+bundles at all anymore, so those fields aren't meaningful here and every entry is shown
+regardless. Note that any listed `http://` (not `https://`) entry won't load given
+`usesCleartextTraffic="false"`.
 
 The SPA (`app-login-page`) handles the actual login.
 
