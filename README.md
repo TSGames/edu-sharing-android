@@ -80,9 +80,12 @@ implementation has no `window.eduBridge` check and falls through to
 `window.location.replace('http://app-registry.edu-sharing.com/ng/?reset=true...')` — an
 external host unrelated to the configured server. Left alone, this shell would open it in an
 external browser with no way back into the app. `shouldOverrideUrlLoading` recognizes that
-specific host and rewrites the navigation onto the configured server's root instead
-(`<serverUrl>/?<same query>`), matching what the eduBridge-aware `restartCordova()` already
-does for a current frontend.
+specific host and, instead of loading a URL at all, runs the same "pick a different server"
+reset as `onExitRequested()`'s login-page branch (`ServerConfig.clear()` +
+`ServerUrlActivity`) — merely reloading the configured server's root was tried first, but
+that only re-shows the same server's (now logged-out) login screen, not a meaningfully
+different "cancel" outcome from the user's perspective; both close/cancel actions on this
+screen now behave the same way.
 
 It deliberately does **not** implement `resolveLocalFileSystemURL`/`NativeStorage`/any other
 legacy plugin — `AppSharePageComponent` (unchanged across old and new) already reads
