@@ -27,20 +27,37 @@ bridge (no Cordova/Capacitor plugins).
 
 ## Legacy frontend compatibility (transitional, NOT part of the contract)
 
-`LegacyFrontendCompat.kt` fakes just enough of the old Cordova globals (`window.cordova`,
-`window.device.platform`) so a server that is still running the **old, pre-eduBridge**
-`cordova.service.ts` still detects "running in the app" (its `isRunningCordova()` otherwise
-returns `false` in this shell, since it looks for those globals / an `"ionic / edu-sharing-app"`
-User-Agent marker this shell doesn't send). It's injected via
-`WebViewCompat.addDocumentStartJavaScript`, scoped to the server origin, and is deliberately
-minimal — it does not reimplement any real Cordova plugin, so an old frontend still won't get
-share handling from this shell, only app-mode detection.
+`LegacyFrontendCompat.kt` fakes just enough of the old Cordova globals so a server that is
+still running the **old, pre-eduBridge** `cordova.service.ts` still detects "running in the
+app" *and* still gets share content redirected to `AppSharePageComponent`:
+
+- `window.cordova` / `window.device.platform` — so `isRunningCordova()`/`isIOS()`/`isAndroid()`
+  return correctly (otherwise `false` in this shell: the old code looks for those globals, or
+  an `"ionic / edu-sharing-app"` User-Agent marker this shell doesn't send).
+- A repeated `deviceready` DOM event dispatch (~20s) — the old `whenDeviceIsReady()`, which
+  sets up the share-redirect subscription, only runs once `deviceIsReady` flips `true`, which
+  requires either a real `deviceready` event or `window.plugins` being truthy. Repeating the
+  dispatch covers the race against Angular's bootstrap time (`document.addEventListener`
+  doesn't buffer events fired before the listener exists).
+- A `window.plugins.intent.{getCordovaIntent, setNewIntentHandler}` stub (buffered:
+  `MainActivity` pushes the parsed share via `LegacyFrontendCompat.deliverShare()` from the
+  same cold/warm-share code paths that feed `eduBridgeOnShare`/`getInitialShare()`, mapped
+  onto the old `cordova-plugin-intent` object shape — `.type`, `.extras['android.intent.extra.
+  TEXT'|'STREAM']`, `.clipItems[0].file`, `.stream` (base64)). This is what the old code calls
+  `this.observerShareContent.next(...)` with, which is what its `router.navigate([...,'app',
+  'share'], {queryParams: data})` subscription actually redirects on.
+
+It deliberately does **not** implement `resolveLocalFileSystemURL`/`NativeStorage`/any other
+legacy plugin — `AppSharePageComponent` (unchanged across old and new) already reads
+`getLastIntent().stream` directly for file content, so that's sufficient; `getFileAsBlob()`'s
+result (which would use `resolveLocalFileSystemURL`) only affects a loading spinner, which
+resolves fine via its error path when left unimplemented.
 
 This is purely a stop-gap for native-app/server-frontend version skew and is inert for any
 frontend that has adopted eduBridge (verified: its `isIOS()`/`isAndroid()`/
-`isReallyRunningCordova()` all check `this.platform`, set from `window.eduBridge`, before ever
-touching `window.cordova`/`window.device`). Remove it once all deployments are known to run an
-eduBridge-aware frontend build.
+`isReallyRunningCordova()` all check `this.platform` first, and `registerOnShareContent()`'s
+`eduBridge` branch returns before ever reaching the `window.plugins.intent` code this shim
+feeds). Remove it once all deployments are known to run an eduBridge-aware frontend build.
 
 ## The `window.eduBridge` contract (as implemented here)
 

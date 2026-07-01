@@ -186,6 +186,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         ioExecutor.execute {
             try {
                 pendingShare = ShareIntentParser.parse(intent, contentResolver)
+                // Legacy compat (not part of eduBridge): also feed a server frontend that
+                // hasn't adopted eduBridge yet, via LegacyFrontendCompat's window.plugins.intent
+                // shim. See LegacyFrontendCompat's doc comment for why both pushes are needed.
+                pendingShare?.let { payload ->
+                    runOnUiThread { LegacyFrontendCompat.deliverShare(webView, payload) }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "cold share parse failed", e)
                 pendingShare = null
@@ -211,6 +217,8 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                     "if(window.eduBridgeOnShare){window.eduBridgeOnShare($quoted);}",
                     null,
                 )
+                // Legacy compat (not part of eduBridge): see prepareColdShare above.
+                LegacyFrontendCompat.deliverShare(webView, payload)
             }
         }
     }
