@@ -35,16 +35,19 @@ jobs:
 
       # Optional: sign debug builds with a stable, secret-backed keystore instead of AGP's
       # default machine-local one, so a debug APK from this run can be installed over one from
-      # a previous run without an uninstall. Secrets aren't available to fork PRs, so this (and
-      # the signing config it feeds) is skipped there -- those builds keep using AGP's default
-      # debug key, unsigned-for-upgrade-purposes but still installable standalone.
+      # a previous run without an uninstall. Secrets aren't available to fork PRs (the env var
+      # below resolves empty there), so those builds keep using AGP's default debug key instead
+      # -- unstable across runs but still installable standalone. The presence check has to
+      # happen inside the shell step (not a step-level `if:`), since Actions disallows
+      # referencing `secrets` directly in `if:` conditionals.
       - name: Decode debug keystore
-        if: ${{ secrets.EDU_SHARING_DEBUG_STORE_BASE64 != '' }}
         env:
           EDU_SHARING_DEBUG_STORE_BASE64: ${{ secrets.EDU_SHARING_DEBUG_STORE_BASE64 }}
         run: |
-          echo "$EDU_SHARING_DEBUG_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
-          echo "EDU_SHARING_DEBUG_STORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+          if [ -n "$EDU_SHARING_DEBUG_STORE_BASE64" ]; then
+            echo "$EDU_SHARING_DEBUG_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+            echo "EDU_SHARING_DEBUG_STORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+          fi
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
