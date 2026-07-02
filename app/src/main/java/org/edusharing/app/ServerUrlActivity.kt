@@ -46,7 +46,11 @@ class ServerUrlActivity : AppCompatActivity() {
         setContentView(R.layout.activity_server_url)
 
         val input = findViewById<EditText>(R.id.serverUrlInput)
-        input.setText(ServerConfig.getServerUrl(this).orEmpty())
+        // Prefer the last-used server (survives a reset, see ServerConfig.getLastServerUrl)
+        // over the active one, so a "pick a different server" reset still prefills what the
+        // user had instead of an empty field; falls back to getServerUrl() (build default)
+        // on a genuine first launch, when neither has ever been set.
+        input.setText((ServerConfig.getLastServerUrl(this) ?: ServerConfig.getServerUrl(this)).orEmpty())
 
         findViewById<Button>(R.id.continueButton).setOnClickListener {
             connect(input.text.toString())

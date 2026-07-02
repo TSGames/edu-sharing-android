@@ -110,4 +110,10 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.webkit)
+
+    testImplementation(libs.junit)
+    // Android's stub android.jar throws UnsupportedOperationException from every
+    // org.json.JSONObject method in plain JVM unit tests -- pull in the real implementation
+    // so SharePayload.toJson() (which uses JSONObject directly) is testable here.
+    testImplementation(libs.org.json)
 }

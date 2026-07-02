@@ -6,6 +6,8 @@ appcompat = "1.7.0"
 material = "1.12.0"
 activity = "1.9.3"
 webkit = "1.12.1"
+junit = "4.13.2"
+json = "20231013"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -13,6 +15,8 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-activity = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+org-json = { group = "org.json", name = "json", version.ref = "json" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

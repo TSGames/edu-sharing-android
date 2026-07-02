@@ -13,6 +13,7 @@ import androidx.core.content.edit
 object ServerConfig {
     private const val PREFS = "edu_sharing_prefs"
     private const val KEY_SERVER_URL = "server_url"
+    private const val KEY_LAST_SERVER_URL = "last_server_url"
 
     /** Returns the stored server URL, or the build default if none was stored yet. */
     fun getServerUrl(context: Context): String? {
@@ -23,10 +24,26 @@ object ServerConfig {
     }
 
     fun setServerUrl(context: Context, url: String) {
-        prefs(context).edit { putString(KEY_SERVER_URL, normalize(url)) }
+        val normalized = normalize(url)
+        prefs(context).edit {
+            putString(KEY_SERVER_URL, normalized)
+            putString(KEY_LAST_SERVER_URL, normalized)
+        }
     }
 
+    /**
+     * Most recently configured server URL. Unlike [getServerUrl], this survives [clear] --
+     * it exists purely so a "reset to server selection" flow (see
+     * MainActivity.resetToServerSelection()) can still prefill ServerUrlActivity's
+     * manual-entry field with what the user had, without leaving [KEY_SERVER_URL] usable
+     * (which would make the next launch's [isUsable] check auto-reconnect instead of showing
+     * the picker).
+     */
+    fun getLastServerUrl(context: Context): String? =
+        prefs(context).getString(KEY_LAST_SERVER_URL, null)
+
     fun clear(context: Context) {
+        // Intentionally leaves KEY_LAST_SERVER_URL behind -- see getLastServerUrl().
         prefs(context).edit { remove(KEY_SERVER_URL) }
     }
 

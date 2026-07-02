@@ -49,6 +49,20 @@ jobs:
             echo "EDU_SHARING_DEBUG_STORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
           fi
 
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Run lint
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edu-sharing-android-lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
 
@@ -57,5 +71,20 @@ jobs:
         with:
           name: edu-sharing-android-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 1
+
+      # Unsigned sanity build: catches release-config regressions (proguard/R8, resource
+      # shrinking, signingConfig wiring) in CI even though real release signing is manual (see
+      # README). signingConfigs.findByName("release") resolves to null with no keystore
+      # configured (the case here), so this produces an unsigned APK -- no secrets needed.
+      - name: Assemble unsigned release APK (sanity build)
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload unsigned release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edu-sharing-android-release-apk-unsigned
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 1
