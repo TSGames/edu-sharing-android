@@ -33,6 +33,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Optional: sign debug builds with a stable, secret-backed keystore instead of AGP's
+      # default machine-local one, so a debug APK from this run can be installed over one from
+      # a previous run without an uninstall. Secrets aren't available to fork PRs, so this (and
+      # the signing config it feeds) is skipped there -- those builds keep using AGP's default
+      # debug key, unsigned-for-upgrade-purposes but still installable standalone.
+      - name: Decode debug keystore
+        if: ${{ secrets.EDU_SHARING_DEBUG_STORE_BASE64 != '' }}
+        env:
+          EDU_SHARING_DEBUG_STORE_BASE64: ${{ secrets.EDU_SHARING_DEBUG_STORE_BASE64 }}
+        run: |
+          echo "$EDU_SHARING_DEBUG_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+          echo "EDU_SHARING_DEBUG_STORE_FILE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
 

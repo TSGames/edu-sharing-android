@@ -256,6 +256,33 @@ keyPassword=…
 keystore is configured, `release` builds are left unsigned. Upload `bundleRelease` output to
 the Play Console.
 
+### Stable debug signing (CI)
+
+Without any configuration, AGP signs `debug` builds with an auto-generated,
+machine-local `~/.android/debug.keystore`. On CI that's a *fresh* keystore on every
+run (a new runner each time), so installing a newer CI-built debug APK over an older
+one fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` unless you uninstall first.
+
+To keep the debug signature stable across CI runs, add a repository secret
+`EDU_SHARING_DEBUG_STORE_BASE64` containing a base64-encoded `.keystore`/`.jks` file; the
+`Decode debug keystore` step in `.github/workflows/build.yml` writes it out and points
+`EDU_SHARING_DEBUG_STORE_FILE` at it for the build. Store/key password default to `android`
+and the alias to `androiddebugkey` (AGP's own debug-keystore defaults), matching a keystore
+generated with:
+
+```
+keytool -genkeypair -keystore debug.keystore -storepass android -keypass android \
+  -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 \
+  -dname "CN=edu-sharing-android CI debug"
+base64 -w0 debug.keystore   # paste this as the EDU_SHARING_DEBUG_STORE_BASE64 secret
+```
+
+Override the defaults with `EDU_SHARING_DEBUG_STORE_PASSWORD`/`EDU_SHARING_DEBUG_KEY_ALIAS`/
+`EDU_SHARING_DEBUG_KEY_PASSWORD` (or the matching `keystore.properties` keys:
+`debugStoreFile`, `debugStorePassword`, `debugKeyAlias`, `debugKeyPassword`) if you use a
+keystore with different credentials. Secrets aren't available to fork PRs, so those builds
+fall back to AGP's default (unstable but installable) debug key.
+
 ## Notes
 
 - `usesCleartextTraffic` is `false` (HTTPS only). For a plain-HTTP dev server, add a debug

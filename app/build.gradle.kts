@@ -49,6 +49,30 @@ android {
         }
     }
 
+    // Stable debug signing (optional). AGP auto-generates a fresh, machine-local
+    // ~/.android/debug.keystore when none of this is set, which is fine for local dev but
+    // means every CI runner (a new machine each time) signs debug APKs with a different key --
+    // installing a newer CI build over an older one then fails with
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE unless you uninstall first. Point at a checked-in-once,
+    // secret-backed keystore (e.g. decoded from a CI secret) to keep the debug signature stable
+    // across builds/runners. Falls back to the same "debug"/"android" values AGP's own default
+    // debug keystore uses, so only the keystore file itself needs to be supplied.
+    val debugStoreFilePath = signingValue("debugStoreFile", "EDU_SHARING_DEBUG_STORE_FILE")
+    if (debugStoreFilePath != null) {
+        signingConfigs {
+            getByName("debug") {
+                storeFile = file(debugStoreFilePath)
+                storePassword =
+                    signingValue("debugStorePassword", "EDU_SHARING_DEBUG_STORE_PASSWORD")
+                        ?: "android"
+                keyAlias = signingValue("debugKeyAlias", "EDU_SHARING_DEBUG_KEY_ALIAS")
+                    ?: "androiddebugkey"
+                keyPassword =
+                    signingValue("debugKeyPassword", "EDU_SHARING_DEBUG_KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
