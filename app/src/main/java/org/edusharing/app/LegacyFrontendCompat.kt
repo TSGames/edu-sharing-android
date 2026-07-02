@@ -68,9 +68,14 @@ object LegacyFrontendCompat {
     // Casing matches the real cordova-plugin-device shape ('Android' / 'iOS'), since the old
     // CordovaService compares against those exact strings. window.plugins.intent buffers a
     // delivered share (pendingIntent) so getCordovaIntent/setNewIntentHandler see it
-    // regardless of registration order. deviceready is redispatched for ~20s to cover Angular
-    // bootstrap time, since a DOM event fired before the old CordovaService constructor has
-    // registered its listener would otherwise simply be missed.
+    // regardless of registration order. When the share is actually handed to the old
+    // CordovaService, we clear the buffer (so it can't double-fire) and call
+    // eduBridge.consumeShare() so the native shell stops re-pushing it on every page load
+    // (see MainActivity.maybeDeliverLegacyColdShare -- the cold-start share is re-delivered
+    // until consumed, because the SPA's startup redirects wipe this per-document buffer).
+    // deviceready is redispatched for ~20s to cover Angular bootstrap time, since a DOM event
+    // fired before the old CordovaService constructor has registered its listener would
+    // otherwise simply be missed.
     private const val SCRIPT = """
         (function() {
             if (typeof window.cordova === 'undefined') {
@@ -84,19 +89,32 @@ object LegacyFrontendCompat {
             if (!window.plugins.intent) {
                 var pendingIntent = null;
                 var newIntentHandler = null;
+                var takePending = function() {
+                    var intent = pendingIntent;
+                    pendingIntent = null;
+                    // Tell native the cold-start share was picked up so it stops re-pushing.
+                    // consumeShare() runs synchronously, so coldShareDelivered is already set
+                    // by the time this returns -- no re-push races this handoff.
+                    try {
+                        if (window.eduBridge && window.eduBridge.consumeShare) {
+                            window.eduBridge.consumeShare();
+                        }
+                    } catch (e) {}
+                    return intent;
+                };
                 window.__eduSharingLegacyDeliverIntent = function(json) {
                     try {
                         pendingIntent = JSON.parse(json);
-                        if (newIntentHandler) { newIntentHandler(pendingIntent); }
-                    } catch (e) {}
+                    } catch (e) { return; }
+                    if (newIntentHandler && pendingIntent) { newIntentHandler(takePending()); }
                 };
                 window.plugins.intent = {
                     getCordovaIntent: function(cb) {
-                        if (cb && pendingIntent) { cb(pendingIntent); }
+                        if (cb && pendingIntent) { cb(takePending()); }
                     },
                     setNewIntentHandler: function(cb) {
                         newIntentHandler = cb;
-                        if (pendingIntent) { cb(pendingIntent); }
+                        if (pendingIntent) { cb(takePending()); }
                     },
                 };
             }

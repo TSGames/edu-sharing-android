@@ -220,12 +220,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         ioExecutor.execute {
             try {
                 pendingShare = ShareIntentParser.parse(intent, contentResolver)
-                // Legacy compat (not part of eduBridge): also feed a server frontend that
-                // hasn't adopted eduBridge yet, via LegacyFrontendCompat's window.plugins.intent
-                // shim. See LegacyFrontendCompat's doc comment for why both pushes are needed.
-                pendingShare?.let { payload ->
-                    runOnUiThread { LegacyFrontendCompat.deliverShare(webView, payload) }
-                }
+                // Legacy compat (not part of eduBridge): if the page already finished loading
+                // before parsing completed, push to the un-migrated frontend now; otherwise
+                // onPageFinished handles it. See maybeDeliverLegacyColdShare().
+                runOnUiThread { maybeDeliverLegacyColdShare() }
             } catch (e: Exception) {
                 Log.w(TAG, "cold share parse failed", e)
                 pendingShare = null
@@ -233,6 +231,29 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 latch.countDown()
             }
         }
+    }
+
+    /**
+     * Legacy compat (NOT eduBridge): pushes the cold-start share into
+     * [LegacyFrontendCompat]'s `window.plugins.intent` buffer, re-pushing on every
+     * [onPageFinished] until an un-migrated `CordovaService` reads it — which calls
+     * `eduBridge.consumeShare()` → [onShareConsumed], flipping [coldShareDelivered] and
+     * stopping the re-pushes.
+     *
+     * A single push during the initial load (the previous behaviour) was unreliable: it raced
+     * the document-start shim script — instant for text/link shares, so it fired before
+     * `window.__eduSharingLegacyDeliverIntent` even existed — and any push that did land was
+     * wiped from the shim's per-document buffer by the SPA's startup redirects (login → default
+     * location) before the old CordovaService's share subscription got around to reading it.
+     * Net effect: cold-start sharing silently did nothing on an un-migrated frontend.
+     *
+     * An eduBridge-aware frontend never reads this buffer (it pulls via `getInitialShare()`),
+     * so the re-pushes are a harmless no-op there and stop once `getInitialShare()` consumes.
+     */
+    private fun maybeDeliverLegacyColdShare() {
+        if (coldShareDelivered || !::webView.isInitialized) return
+        val payload = pendingShare ?: return
+        LegacyFrontendCompat.deliverShare(webView, payload)
     }
 
     /** Handles a share that arrives while the app is already running (warm start). */
@@ -453,6 +474,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 pendingHistoryClear = false
                 view.clearHistory()
             }
+            // Re-push a not-yet-consumed cold-start share to the legacy shim: the SPA's startup
+            // redirects reset the shim's per-document buffer, so one push during the initial
+            // load isn't enough for an un-migrated frontend (see maybeDeliverLegacyColdShare).
+            maybeDeliverLegacyColdShare()
             view.evaluateJavascript(
                 "if(window.eduBridgeOnReady){window.eduBridgeOnReady();}",
                 null,
