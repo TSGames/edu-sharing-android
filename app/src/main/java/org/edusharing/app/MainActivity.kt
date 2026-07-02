@@ -320,7 +320,14 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         // Wait briefly for the background base64 encoding to finish.
         shareReady.await(SHARE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         val payload = pendingShare ?: return ""
-        coldShareDelivered = true
+        // Deliberately does NOT set coldShareDelivered here (only onShareConsumed() -- called
+        // via the frontend's eduBridge.consumeShare(), which it currently never invokes -- does
+        // that). The SPA's startup/login flow does full-page reloads: CordovaService bootstraps
+        // fresh on each one and calls getInitialShare() again, so marking the share "delivered"
+        // on the first call silently dropped it whenever a reload happened between that first
+        // (possibly not-yet-final) page and the page that actually shows the share screen. This
+        // mirrors the legacy shim's re-push-until-consumed behaviour (see
+        // MainActivity.maybeDeliverLegacyColdShare / LegacyFrontendCompat).
         return payload.toJson()
     }
 

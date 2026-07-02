@@ -102,6 +102,13 @@ object LegacyFrontendCompat {
                     // share through (it carries a different nonce).
                     if (!cb || !pendingIntent || pendingNonce === lastDeliveredNonce) { return; }
                     lastDeliveredNonce = pendingNonce;
+                    // Tell native this share was actually handed to the old CordovaService, so
+                    // it can stop re-pushing it (consumeShare() runs synchronously).
+                    try {
+                        if (window.eduBridge && window.eduBridge.consumeShare) {
+                            window.eduBridge.consumeShare();
+                        }
+                    } catch (e) {}
                     cb(pendingIntent);
                 };
                 window.__eduSharingLegacyDeliverIntent = function(json, nonce) {
