@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
+import java.io.InputStream
 
 /**
  * Turns an incoming [Intent] (ACTION_SEND share or ACTION_VIEW deep link) into a
@@ -23,6 +24,9 @@ object ShareIntentParser {
      * `android:largeHeap="true"` (see AndroidManifest) so mid-size files don't OOM.
      */
     private const val MAX_INLINE_BYTES = 64 * 1024 * 1024
+
+    /** Short pause before the single read retry, to let a transient provider hiccup clear. */
+    private const val RETRY_BACKOFF_MILLIS = 120L
 
     /** @return a payload, or `null` when the intent carries nothing shareable. */
     fun parse(intent: Intent?, resolver: ContentResolver): SharePayload? {
@@ -107,19 +111,40 @@ object ShareIntentParser {
 
     /** Reads the bytes behind a content URI, or `null` on failure / oversized content. */
     fun readBytes(resolver: ContentResolver, uri: Uri): ByteArray? {
-        return try {
-            resolver.openInputStream(uri)?.use { input ->
-                val bytes = input.readBytes()
-                if (bytes.size > MAX_INLINE_BYTES) {
-                    Log.w(TAG, "share content exceeds inline cap (${bytes.size} bytes): $uri")
-                    null
-                } else {
-                    bytes
+        // Two attempts: a shared content:// provider (especially a sender app's FileProvider)
+        // can transiently fail or not be ready right after a share launch, which surfaced as
+        // intermittent "empty stream" share failures. Retry once, and fall back to an asset
+        // file descriptor when a plain input stream isn't offered.
+        repeat(2) { attempt ->
+            try {
+                openShareStream(resolver, uri)?.use { input ->
+                    val bytes = input.readBytes()
+                    return if (bytes.size > MAX_INLINE_BYTES) {
+                        Log.w(TAG, "share content exceeds inline cap (${bytes.size} bytes): $uri")
+                        null
+                    } else {
+                        bytes
+                    }
+                }
+                Log.w(TAG, "readBytes got no stream for $uri (attempt ${attempt + 1})")
+            } catch (e: Exception) {
+                Log.w(TAG, "readBytes attempt ${attempt + 1} failed for $uri", e)
+            }
+            if (attempt == 0) {
+                try {
+                    Thread.sleep(RETRY_BACKOFF_MILLIS)
+                } catch (ignored: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return null
                 }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "readBytes failed for $uri", e)
-            null
         }
+        return null
+    }
+
+    /** Opens a share URI, falling back to an asset file descriptor when no plain stream is given. */
+    private fun openShareStream(resolver: ContentResolver, uri: Uri): InputStream? {
+        resolver.openInputStream(uri)?.let { return it }
+        return resolver.openAssetFileDescriptor(uri, "r")?.createInputStream()
     }
 }

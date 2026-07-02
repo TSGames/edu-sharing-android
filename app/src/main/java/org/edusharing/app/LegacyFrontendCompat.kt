@@ -67,15 +67,16 @@ object LegacyFrontendCompat {
 
     // Casing matches the real cordova-plugin-device shape ('Android' / 'iOS'), since the old
     // CordovaService compares against those exact strings. window.plugins.intent buffers a
-    // delivered share (pendingIntent) so getCordovaIntent/setNewIntentHandler see it
-    // regardless of registration order. When the share is actually handed to the old
-    // CordovaService, we clear the buffer (so it can't double-fire) and call
-    // eduBridge.consumeShare() so the native shell stops re-pushing it on every page load
-    // (see MainActivity.maybeDeliverLegacyColdShare -- the cold-start share is re-delivered
-    // until consumed, because the SPA's startup redirects wipe this per-document buffer).
-    // deviceready is redispatched for ~20s to cover Angular bootstrap time, since a DOM event
-    // fired before the old CordovaService constructor has registered its listener would
-    // otherwise simply be missed.
+    // delivered share so getCordovaIntent/setNewIntentHandler see it regardless of registration
+    // order. Crucially the share is mirrored into sessionStorage: the SPA's startup/login flow
+    // does full-page reloads that wipe every in-page variable (and CordovaService.lastIntent)
+    // before the share is read, which made cold/warm sharing fail intermittently. sessionStorage
+    // survives those reloads, so each freshly bootstrapped document restores the pending share
+    // and re-delivers it (once per document -- deliveredThisDoc). On handoff we call
+    // eduBridge.consumeShare() so the native shell stops its own re-pushing (see
+    // MainActivity.maybeDeliverLegacyColdShare). deviceready is redispatched for ~20s to cover
+    // Angular bootstrap time, since a DOM event fired before the old CordovaService constructor
+    // has registered its listener would otherwise simply be missed.
     private const val SCRIPT = """
         (function() {
             if (typeof window.cordova === 'undefined') {
@@ -87,34 +88,45 @@ object LegacyFrontendCompat {
 
             if (!window.plugins) { window.plugins = {}; }
             if (!window.plugins.intent) {
+                var SHARE_STORAGE_KEY = '__eduSharingPendingIntent';
                 var pendingIntent = null;
+                // Restore a share still pending from a previous document (survives the SPA's
+                // startup/login full-page reloads, which wipe every in-page variable).
+                try {
+                    var savedIntent = window.sessionStorage.getItem(SHARE_STORAGE_KEY);
+                    if (savedIntent) { pendingIntent = JSON.parse(savedIntent); }
+                } catch (e) {}
                 var newIntentHandler = null;
-                var takePending = function() {
+                var deliveredThisDoc = false;
+                var deliverPending = function(cb) {
+                    // Hand the pending share to the old CordovaService callback once per
+                    // document. consumeShare() runs synchronously (so native's
+                    // coldShareDelivered flag is set before this returns, stopping its
+                    // re-pushes) and is called before the callback navigates to the share screen.
+                    if (deliveredThisDoc || !pendingIntent || !cb) { return; }
+                    deliveredThisDoc = true;
                     var intent = pendingIntent;
-                    pendingIntent = null;
-                    // Tell native the cold-start share was picked up so it stops re-pushing.
-                    // consumeShare() runs synchronously, so coldShareDelivered is already set
-                    // by the time this returns -- no re-push races this handoff.
                     try {
                         if (window.eduBridge && window.eduBridge.consumeShare) {
                             window.eduBridge.consumeShare();
                         }
                     } catch (e) {}
-                    return intent;
+                    cb(intent);
                 };
                 window.__eduSharingLegacyDeliverIntent = function(json) {
                     try {
                         pendingIntent = JSON.parse(json);
+                        window.sessionStorage.setItem(SHARE_STORAGE_KEY, json);
                     } catch (e) { return; }
-                    if (newIntentHandler && pendingIntent) { newIntentHandler(takePending()); }
+                    // A fresh push (native cold re-push or a warm share) may re-fire this doc.
+                    deliveredThisDoc = false;
+                    if (newIntentHandler) { deliverPending(newIntentHandler); }
                 };
                 window.plugins.intent = {
-                    getCordovaIntent: function(cb) {
-                        if (cb && pendingIntent) { cb(takePending()); }
-                    },
+                    getCordovaIntent: function(cb) { deliverPending(cb); },
                     setNewIntentHandler: function(cb) {
                         newIntentHandler = cb;
-                        if (pendingIntent) { cb(takePending()); }
+                        deliverPending(cb);
                     },
                 };
             }
