@@ -15,8 +15,14 @@ import android.util.Log
 object ShareIntentParser {
     private const val TAG = "ShareIntentParser"
 
-    /** Hard cap on inlined file size to avoid OOM when base64-encoding into memory (~32 MB). */
-    private const val MAX_INLINE_BYTES = 32 * 1024 * 1024
+    /**
+     * Hard cap on inlined file size. Shared files are read fully into memory, base64-encoded,
+     * and shipped across the JS bridge as a string (the SPA reads `getLastIntent().stream`),
+     * so this bounds transient memory. Files above the cap surface the SPA's "only limited-size
+     * files can be shared" error instead of silently failing. Kept in step with
+     * `android:largeHeap="true"` (see AndroidManifest) so mid-size files don't OOM.
+     */
+    private const val MAX_INLINE_BYTES = 64 * 1024 * 1024
 
     /** @return a payload, or `null` when the intent carries nothing shareable. */
     fun parse(intent: Intent?, resolver: ContentResolver): SharePayload? {
@@ -33,7 +39,15 @@ object ShareIntentParser {
         val streamUri: Uri? = intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
 
         if (streamUri != null) {
-            val bytes = readBytes(resolver, streamUri)
+            // Skip reading files whose declared size is already over the cap, so an oversized
+            // pick (e.g. a multi-GB video) isn't streamed fully into memory just to be rejected.
+            val declaredSize = queryStreamSize(resolver, streamUri)
+            val bytes = if (declaredSize != null && declaredSize > MAX_INLINE_BYTES) {
+                Log.w(TAG, "share content declared size $declaredSize exceeds inline cap ($MAX_INLINE_BYTES): $streamUri")
+                null
+            } else {
+                readBytes(resolver, streamUri)
+            }
             return SharePayload(
                 action = SharePayload.ACTION_SEND,
                 mimetype = resolver.getType(streamUri) ?: type,
@@ -58,6 +72,21 @@ object ShareIntentParser {
     private fun parseView(intent: Intent): SharePayload? {
         val data = intent.dataString ?: return null
         return SharePayload(action = SharePayload.ACTION_VIEW, uri = data)
+    }
+
+    /** Reads the declared byte size of a content URI, or `null` if the provider doesn't report it. */
+    private fun queryStreamSize(resolver: ContentResolver, uri: Uri): Long? {
+        try {
+            resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+                val idx = c.getColumnIndex(OpenableColumns.SIZE)
+                if (idx >= 0 && c.moveToFirst() && !c.isNull(idx)) {
+                    return c.getLong(idx)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "queryStreamSize failed for $uri", e)
+        }
+        return null
     }
 
     /** Reads the display name backing a content URI, falling back to the last path segment. */

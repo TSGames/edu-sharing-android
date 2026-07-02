@@ -24,7 +24,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
-        android:theme="@style/Theme.EduSharing">
+        android:theme="@style/Theme.EduSharing"
+        android:largeHeap="true"><!-- shared files are base64-inlined across the JS bridge (see
+        ShareIntentParser.MAX_INLINE_BYTES); largeHeap raises the per-app heap so mid-size files
+        don't OOM while encoding/handing them off. -->
 
         <!-- Lets the user pick / change the edu-sharing server before the SPA loads. -->
         <activity
