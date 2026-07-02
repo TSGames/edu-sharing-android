@@ -334,6 +334,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     override fun onShareConsumed() {
         coldShareDelivered = true
         pendingShare = null
+        // Debug-only: confirms the SPA (either eduBridge's getInitialShare() or, for an
+        // un-migrated frontend, the legacy shim -- see LegacyFrontendCompat) actually called
+        // consumeShare(), i.e. native's hand-off succeeded. If sharing still fails despite this
+        // toast appearing, the bug is downstream in that frontend's own handling, not in
+        // delivery -- called on the WebView binder thread, so hop to the UI thread for the toast.
+        runOnUiThread { showShareDiagnostic("consumeShare() empfangen -- Übergabe an Frontend ok") }
     }
 
     /**
