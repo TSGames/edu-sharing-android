@@ -12,6 +12,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -226,10 +227,14 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             try {
                 pendingShare = ShareIntentParser.parse(intent, contentResolver)
                 shareNonce = nextShareNonce()
+                val diagnostic = ShareIntentParser.lastDiagnostic
                 // Legacy compat (not part of eduBridge): if the page already finished loading
                 // before parsing completed, push to the un-migrated frontend now; otherwise
                 // onPageFinished handles it. See maybeDeliverLegacyColdShare().
-                runOnUiThread { maybeDeliverLegacyColdShare() }
+                runOnUiThread {
+                    maybeDeliverLegacyColdShare()
+                    showShareDiagnostic(diagnostic)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "cold share parse failed", e)
                 pendingShare = null
@@ -275,6 +280,7 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 null
             } ?: return@execute
             val nonce = nextShareNonce()
+            val diagnostic = ShareIntentParser.lastDiagnostic
             val quoted = JSONObject.quote(payload.toJson())
             runOnUiThread {
                 webView.evaluateJavascript(
@@ -283,12 +289,23 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 )
                 // Legacy compat (not part of eduBridge): see prepareColdShare above.
                 LegacyFrontendCompat.deliverShare(webView, payload, nonce)
+                showShareDiagnostic(diagnostic)
             }
         }
     }
 
     /** A process-unique token for a single share, used by the legacy shim's re-push de-dup. */
     private fun nextShareNonce(): String = "share-${shareNonceCounter.incrementAndGet()}"
+
+    /**
+     * Debug-only: surfaces what happened when a share was parsed (bytes read, read error, or
+     * "no stream") as a toast, so share failures can be diagnosed on-device without adb. No-op
+     * in release builds.
+     */
+    private fun showShareDiagnostic(diagnostic: String) {
+        if (!BuildConfig.DEBUG || diagnostic.isEmpty()) return
+        Toast.makeText(this, "Share: $diagnostic", Toast.LENGTH_LONG).show()
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

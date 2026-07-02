@@ -30,6 +30,14 @@ object ShareIntentParser {
     /** Short pause before the single read retry, to let a transient provider hiccup clear. */
     private const val RETRY_BACKOFF_MILLIS = 120L
 
+    /**
+     * Human-readable outcome of the most recent [parse], surfaced as an on-screen toast in
+     * debug builds (see MainActivity) so share-read failures can be diagnosed without adb.
+     */
+    @Volatile
+    var lastDiagnostic: String = ""
+        private set
+
     /** @return a payload, or `null` when the intent carries nothing shareable. */
     fun parse(intent: Intent?, resolver: ContentResolver): SharePayload? {
         if (intent == null) return null
@@ -45,18 +53,23 @@ object ShareIntentParser {
         val streamUri: Uri? = intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
 
         if (streamUri != null) {
+            val mimetype = resolver.getType(streamUri) ?: type
             // Skip reading files whose declared size is already over the cap, so an oversized
             // pick (e.g. a multi-GB video) isn't streamed fully into memory just to be rejected.
             val declaredSize = queryStreamSize(resolver, streamUri)
             val bytes = if (declaredSize != null && declaredSize > MAX_INLINE_BYTES) {
                 Log.w(TAG, "share content declared size $declaredSize exceeds inline cap ($MAX_INLINE_BYTES): $streamUri")
+                lastDiagnostic = "Datei zu groß (${declaredSize / (1024 * 1024)} MB)"
                 null
             } else {
                 readBytes(resolver, streamUri)
             }
+            if (bytes != null) {
+                lastDiagnostic = "Datei ok: ${bytes.size} bytes, $mimetype"
+            }
             return SharePayload(
                 action = SharePayload.ACTION_SEND,
-                mimetype = resolver.getType(streamUri) ?: type,
+                mimetype = mimetype,
                 uri = streamUri.toString(),
                 fileName = queryDisplayName(resolver, streamUri),
                 stream = bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "",
@@ -65,6 +78,7 @@ object ShareIntentParser {
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
         if (!sharedText.isNullOrEmpty()) {
+            lastDiagnostic = "Text/Link geteilt (${sharedText.length} Zeichen)"
             return SharePayload(
                 action = SharePayload.ACTION_SEND,
                 mimetype = "text/plain",
@@ -72,6 +86,7 @@ object ShareIntentParser {
                 uri = sharedText,
             )
         }
+        lastDiagnostic = "Intent ohne STREAM und ohne TEXT (type=$type)"
         return null
     }
 
@@ -123,14 +138,17 @@ object ShareIntentParser {
                     val bytes = input.readBytes()
                     return if (bytes.size > MAX_INLINE_BYTES) {
                         Log.w(TAG, "share content exceeds inline cap (${bytes.size} bytes): $uri")
+                        lastDiagnostic = "Datei zu groß (${bytes.size / (1024 * 1024)} MB)"
                         null
                     } else {
                         bytes
                     }
                 }
                 Log.w(TAG, "readBytes got no stream for $uri (attempt ${attempt + 1})")
+                lastDiagnostic = "Kein Stream für die Datei (Provider lieferte nichts)"
             } catch (e: Exception) {
                 Log.w(TAG, "readBytes attempt ${attempt + 1} failed for $uri", e)
+                lastDiagnostic = "Lesefehler (${e.javaClass.simpleName}): ${e.message}"
             }
             if (attempt == 0) {
                 try {
