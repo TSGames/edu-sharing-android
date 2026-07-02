@@ -20,10 +20,12 @@ object ShareIntentParser {
      * Hard cap on inlined file size. Shared files are read fully into memory, base64-encoded,
      * and shipped across the JS bridge as a string (the SPA reads `getLastIntent().stream`),
      * so this bounds transient memory. Files above the cap surface the SPA's "only limited-size
-     * files can be shared" error instead of silently failing. Kept in step with
-     * `android:largeHeap="true"` (see AndroidManifest) so mid-size files don't OOM.
+     * files can be shared" error instead of silently failing. Relies on
+     * `android:largeHeap="true"` (see AndroidManifest) for the headroom; note the encode/handoff
+     * transiently holds several multiples of the file size, so on lower-memory devices files
+     * near this cap can still OOM.
      */
-    private const val MAX_INLINE_BYTES = 64 * 1024 * 1024
+    private const val MAX_INLINE_BYTES = 150 * 1024 * 1024
 
     /** Short pause before the single read retry, to let a transient provider hiccup clear. */
     private const val RETRY_BACKOFF_MILLIS = 120L
