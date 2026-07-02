@@ -68,15 +68,16 @@ object LegacyFrontendCompat {
     // Casing matches the real cordova-plugin-device shape ('Android' / 'iOS'), since the old
     // CordovaService compares against those exact strings. window.plugins.intent buffers a
     // delivered share so getCordovaIntent/setNewIntentHandler see it regardless of registration
-    // order. Crucially the share is mirrored into sessionStorage: the SPA's startup/login flow
-    // does full-page reloads that wipe every in-page variable (and CordovaService.lastIntent)
-    // before the share is read, which made cold/warm sharing fail intermittently. sessionStorage
-    // survives those reloads, so each freshly bootstrapped document restores the pending share
-    // and re-delivers it (once per document -- deliveredThisDoc). On handoff we call
-    // eduBridge.consumeShare() so the native shell stops its own re-pushing (see
-    // MainActivity.maybeDeliverLegacyColdShare). deviceready is redispatched for ~20s to cover
-    // Angular bootstrap time, since a DOM event fired before the old CordovaService constructor
-    // has registered its listener would otherwise simply be missed.
+    // order. The SPA's startup/login flow does full-page reloads that wipe every in-page variable
+    // (and CordovaService.lastIntent) before the share is read, which made cold/warm sharing fail
+    // intermittently; the native shell therefore re-pushes the share on every page load (see
+    // MainActivity.maybeDeliverLegacyColdShare) so each freshly bootstrapped document receives it.
+    // A per-share nonce keeps those re-pushes from re-firing the same share twice within one
+    // document, while still letting a genuinely new (warm) share through. This is
+    // size-independent (no sessionStorage, whose ~5MB quota can't hold a base64-encoded file).
+    // deviceready is redispatched for ~20s to cover Angular bootstrap time, since a DOM event
+    // fired before the old CordovaService constructor has registered its listener would otherwise
+    // simply be missed.
     private const val SCRIPT = """
         (function() {
             if (typeof window.cordova === 'undefined') {
@@ -88,38 +89,26 @@ object LegacyFrontendCompat {
 
             if (!window.plugins) { window.plugins = {}; }
             if (!window.plugins.intent) {
-                var SHARE_STORAGE_KEY = '__eduSharingPendingIntent';
                 var pendingIntent = null;
-                // Restore a share still pending from a previous document (survives the SPA's
-                // startup/login full-page reloads, which wipe every in-page variable).
-                try {
-                    var savedIntent = window.sessionStorage.getItem(SHARE_STORAGE_KEY);
-                    if (savedIntent) { pendingIntent = JSON.parse(savedIntent); }
-                } catch (e) {}
+                var pendingNonce = null;
+                var lastDeliveredNonce = null;
                 var newIntentHandler = null;
-                var deliveredThisDoc = false;
                 var deliverPending = function(cb) {
-                    // Hand the pending share to the old CordovaService callback once per
-                    // document. consumeShare() runs synchronously (so native's
-                    // coldShareDelivered flag is set before this returns, stopping its
-                    // re-pushes) and is called before the callback navigates to the share screen.
-                    if (deliveredThisDoc || !pendingIntent || !cb) { return; }
-                    deliveredThisDoc = true;
-                    var intent = pendingIntent;
-                    try {
-                        if (window.eduBridge && window.eduBridge.consumeShare) {
-                            window.eduBridge.consumeShare();
-                        }
-                    } catch (e) {}
-                    cb(intent);
+                    // Hand the pending share to the old CordovaService callback at most once per
+                    // (document, share). The native side re-pushes on every page load so the
+                    // share survives the SPA's startup/login full-page reloads (which wipe this
+                    // in-page buffer); the nonce guard keeps those re-pushes from re-firing the
+                    // same share within one document, while still letting a genuinely new (warm)
+                    // share through (it carries a different nonce).
+                    if (!cb || !pendingIntent || pendingNonce === lastDeliveredNonce) { return; }
+                    lastDeliveredNonce = pendingNonce;
+                    cb(pendingIntent);
                 };
-                window.__eduSharingLegacyDeliverIntent = function(json) {
+                window.__eduSharingLegacyDeliverIntent = function(json, nonce) {
                     try {
                         pendingIntent = JSON.parse(json);
-                        window.sessionStorage.setItem(SHARE_STORAGE_KEY, json);
                     } catch (e) { return; }
-                    // A fresh push (native cold re-push or a warm share) may re-fire this doc.
-                    deliveredThisDoc = false;
+                    pendingNonce = nonce;
                     if (newIntentHandler) { deliverPending(newIntentHandler); }
                 };
                 window.plugins.intent = {
@@ -231,12 +220,18 @@ object LegacyFrontendCompat {
         WebViewCompat.addDocumentStartJavaScript(webView, SCRIPT, setOf(allowedOrigin))
     }
 
-    /** Pushes a SEND share to the legacy `window.plugins.intent` shim, if it's installed. */
-    fun deliverShare(webView: WebView, payload: SharePayload) {
+    /**
+     * Pushes a SEND share to the legacy `window.plugins.intent` shim, if it's installed.
+     * [nonce] identifies this specific share so repeated pushes of the *same* share (the native
+     * shell re-pushes on every page load to survive reloads) aren't re-delivered twice within a
+     * document, while a new (warm) share with a different nonce still gets through.
+     */
+    fun deliverShare(webView: WebView, payload: SharePayload, nonce: String) {
         if (payload.action != SharePayload.ACTION_SEND) return
         val quoted = JSONObject.quote(toLegacyIntentJson(payload))
+        val quotedNonce = JSONObject.quote(nonce)
         webView.evaluateJavascript(
-            "if(window.__eduSharingLegacyDeliverIntent){window.__eduSharingLegacyDeliverIntent($quoted);}",
+            "if(window.__eduSharingLegacyDeliverIntent){window.__eduSharingLegacyDeliverIntent($quoted,$quotedNonce);}",
             null,
         )
     }

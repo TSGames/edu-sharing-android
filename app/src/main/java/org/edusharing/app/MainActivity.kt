@@ -24,6 +24,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Hosts the remote edu-sharing SPA in a [WebView] and bridges Android share intents to it
@@ -42,6 +43,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     // Cold-start share held until the SPA pulls it via getInitialShare() (pull model).
     @Volatile private var pendingShare: SharePayload? = null
     @Volatile private var coldShareDelivered = false
+    // Identifies the current share so the legacy shim can de-dupe our re-pushes (see
+    // LegacyFrontendCompat.deliverShare); a fresh value is minted per parsed share.
+    @Volatile private var shareNonce: String = ""
+    private val shareNonceCounter = AtomicLong(0)
     // Signals that pendingShare (incl. base64 encoding) is ready; starts "open" (no share).
     @Volatile private var shareReady = CountDownLatch(0)
 
@@ -220,6 +225,7 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         ioExecutor.execute {
             try {
                 pendingShare = ShareIntentParser.parse(intent, contentResolver)
+                shareNonce = nextShareNonce()
                 // Legacy compat (not part of eduBridge): if the page already finished loading
                 // before parsing completed, push to the un-migrated frontend now; otherwise
                 // onPageFinished handles it. See maybeDeliverLegacyColdShare().
@@ -236,24 +242,26 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     /**
      * Legacy compat (NOT eduBridge): pushes the cold-start share into
      * [LegacyFrontendCompat]'s `window.plugins.intent` buffer, re-pushing on every
-     * [onPageFinished] until an un-migrated `CordovaService` reads it — which calls
-     * `eduBridge.consumeShare()` → [onShareConsumed], flipping [coldShareDelivered] and
-     * stopping the re-pushes.
+     * [onPageFinished] as long as a share is pending. The shim de-dupes repeated pushes of the
+     * same share (by [shareNonce]) so re-pushing doesn't re-navigate within a document; it only
+     * re-delivers to a *freshly reloaded* document, which is exactly what's needed.
      *
-     * A single push during the initial load (the previous behaviour) was unreliable: it raced
+     * A single push during the initial load (the original behaviour) was unreliable: it raced
      * the document-start shim script — instant for text/link shares, so it fired before
      * `window.__eduSharingLegacyDeliverIntent` even existed — and any push that did land was
      * wiped from the shim's per-document buffer by the SPA's startup redirects (login → default
      * location) before the old CordovaService's share subscription got around to reading it.
-     * Net effect: cold-start sharing silently did nothing on an un-migrated frontend.
+     * Re-pushing on every page load survives those reloads without relying on sessionStorage
+     * (whose ~5MB quota can't hold a base64-encoded file).
      *
      * An eduBridge-aware frontend never reads this buffer (it pulls via `getInitialShare()`),
-     * so the re-pushes are a harmless no-op there and stop once `getInitialShare()` consumes.
+     * so the re-pushes are a harmless no-op there and stop once `getInitialShare()` consumes
+     * (which flips [coldShareDelivered]).
      */
     private fun maybeDeliverLegacyColdShare() {
         if (coldShareDelivered || !::webView.isInitialized) return
         val payload = pendingShare ?: return
-        LegacyFrontendCompat.deliverShare(webView, payload)
+        LegacyFrontendCompat.deliverShare(webView, payload, shareNonce)
     }
 
     /** Handles a share that arrives while the app is already running (warm start). */
@@ -266,6 +274,7 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 Log.w(TAG, "warm share parse failed", e)
                 null
             } ?: return@execute
+            val nonce = nextShareNonce()
             val quoted = JSONObject.quote(payload.toJson())
             runOnUiThread {
                 webView.evaluateJavascript(
@@ -273,10 +282,13 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                     null,
                 )
                 // Legacy compat (not part of eduBridge): see prepareColdShare above.
-                LegacyFrontendCompat.deliverShare(webView, payload)
+                LegacyFrontendCompat.deliverShare(webView, payload, nonce)
             }
         }
     }
+
+    /** A process-unique token for a single share, used by the legacy shim's re-push de-dup. */
+    private fun nextShareNonce(): String = "share-${shareNonceCounter.incrementAndGet()}"
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
