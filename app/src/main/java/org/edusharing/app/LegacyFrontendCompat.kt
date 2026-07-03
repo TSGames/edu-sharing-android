@@ -88,9 +88,18 @@ object LegacyFrontendCompat {
      * itself for the current page load -- only when a share is actually pending. NOT part of
      * the eduBridge contract; register alongside [installIfSupported] (see MainActivity).
      */
-    class ShareGuardHost(private val hasPendingShare: () -> Boolean) {
+    class ShareGuardHost(
+        private val hasPendingShare: () -> Boolean,
+        private val onDiagnostic: (String) -> Unit,
+    ) {
         @JavascriptInterface
         fun hasPendingShare(): Boolean = hasPendingShare()
+
+        /** Debug-only: lets the guard report what it's actually doing (armed / blocked a
+         *  navigation / etc.), since there's no other way to see shim-internal JS behavior
+         *  without adb. */
+        @JavascriptInterface
+        fun reportDiagnostic(message: String) = onDiagnostic(message)
 
         companion object {
             /** The object name the shim script looks for: `window.__eduSharingLegacyGuardHost`. */
@@ -178,7 +187,12 @@ object LegacyFrontendCompat {
             // app actually reaches the share route, or after a fixed timeout as a safety valve so
             // navigation is never permanently stuck if a share never actually arrives after all.
             try {
-                if (window.__eduSharingLegacyGuardHost && window.__eduSharingLegacyGuardHost.hasPendingShare()) {
+                var guardHost = window.__eduSharingLegacyGuardHost;
+                var reportDiag = function(msg) {
+                    try { if (guardHost && guardHost.reportDiagnostic) { guardHost.reportDiagnostic(msg); } } catch (e) {}
+                };
+                if (guardHost && guardHost.hasPendingShare()) {
+                    reportDiag('Guard: scharf (path=' + location.pathname + ')');
                     var GUARD_TIMEOUT_MS = 20000;
                     var guardArmedAt = Date.now();
                     var guardActive = true;
@@ -193,17 +207,30 @@ object LegacyFrontendCompat {
                     };
                     var checkDisarm = function() {
                         if (!guardActive) { return; }
-                        if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) { guardActive = false; return; }
-                        if (location.pathname.indexOf('/components/app/share') >= 0) { guardActive = false; }
+                        if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) {
+                            guardActive = false;
+                            reportDiag('Guard: Timeout, entschärft');
+                            return;
+                        }
+                        if (location.pathname.indexOf('/components/app/share') >= 0) {
+                            guardActive = false;
+                            reportDiag('Guard: Share-Route erreicht, entschärft');
+                        }
                     };
                     ['pushState', 'replaceState'].forEach(function(name) {
                         var real = history[name].bind(history);
                         history[name] = function(state, title, url) {
                             checkDisarm();
-                            if (guardActive && url && !isGuardedRoute(url)) { return; }
+                            if (guardActive && url && !isGuardedRoute(url)) {
+                                reportDiag('Guard: blockiert ' + name + ' zu ' + url);
+                                return;
+                            }
+                            reportDiag('Guard: erlaubt ' + name + ' zu ' + url);
                             return real(state, title, url);
                         };
                     });
+                } else {
+                    reportDiag('Guard: nicht scharf (kein Share ausstehend, path=' + location.pathname + ')');
                 }
             } catch (e) {}
 
