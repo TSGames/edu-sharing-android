@@ -53,6 +53,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     // Signals that pendingShare (incl. base64 encoding) is ready; starts "open" (no share).
     @Volatile private var shareReady = CountDownLatch(0)
 
+    // Warm share (onNewIntent) held until the Activity is confirmed resumed -- see
+    // maybeDeliverPendingWarmShare().
+    @Volatile private var pendingWarmShare: SharePayload? = null
+    @Volatile private var pendingWarmShareNonce: String = ""
+    @Volatile private var isActivityResumed = false
+
     private var backgroundedAt = 0L
 
     // Set before loading a (possibly new) server; consumed in onPageFinished, see startShell().
@@ -309,18 +315,39 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
                 runOnUiThread { showShareDiagnostic(diagnostic) }
                 return@execute
             }
-            val nonce = nextShareNonce()
-            val quoted = JSONObject.quote(payload.toJson())
+            pendingWarmShare = payload
+            pendingWarmShareNonce = nextShareNonce()
             runOnUiThread {
-                webView.evaluateJavascript(
-                    "if(window.eduBridgeOnShare){window.eduBridgeOnShare($quoted);}",
-                    null,
-                )
-                // Legacy compat (not part of eduBridge): see prepareColdShare above.
-                LegacyFrontendCompat.deliverShare(webView, payload, nonce)
                 showShareDiagnostic(diagnostic)
+                maybeDeliverPendingWarmShare()
             }
         }
+    }
+
+    /**
+     * Delivers a held warm share, but only once the Activity is confirmed resumed.
+     *
+     * onNewIntent() fires *before* onResume() when the app is brought back to the foreground by
+     * another app's share sheet (Gallery, etc.) -- the file is always fully read by this point
+     * (see handleWarmShare above), but calling evaluateJavascript() straight from that
+     * background-parse callback can still land on the WebView while it's mid-pause/hidden-tab
+     * transition, where Chromium may silently delay JS execution for the page until it's
+     * actually visible again -- with no exception, no timeout, nothing to observe natively.
+     * Holding the parsed payload and (re)trying delivery from onResume() as well as right after
+     * parsing closes that gap: whichever of the two actually runs while resumed delivers it.
+     */
+    private fun maybeDeliverPendingWarmShare() {
+        if (!isActivityResumed || !::webView.isInitialized) return
+        val payload = pendingWarmShare ?: return
+        val nonce = pendingWarmShareNonce
+        pendingWarmShare = null
+        val quoted = JSONObject.quote(payload.toJson())
+        webView.evaluateJavascript(
+            "if(window.eduBridgeOnShare){window.eduBridgeOnShare($quoted);}",
+            null,
+        )
+        // Legacy compat (not part of eduBridge): see prepareColdShare above.
+        LegacyFrontendCompat.deliverShare(webView, payload, nonce)
     }
 
     /** A process-unique token for a single share, used by the legacy shim's re-push de-dup. */
@@ -505,11 +532,13 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
 
     override fun onPause() {
         super.onPause()
+        isActivityResumed = false
         backgroundedAt = System.currentTimeMillis()
     }
 
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
         // Match the SPA's own rule: only treat >1 min in the background as a real resume.
         if (backgroundedAt > 0 &&
             System.currentTimeMillis() - backgroundedAt > RESUME_THRESHOLD_MILLIS &&
@@ -521,6 +550,10 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             )
         }
         backgroundedAt = 0
+        // See maybeDeliverPendingWarmShare(): a warm share that arrived via onNewIntent() while
+        // still paused (the common case, since onNewIntent() fires before onResume() when
+        // returning from another app's share sheet) is delivered here instead.
+        maybeDeliverPendingWarmShare()
     }
 
     private val backCallback = object : OnBackPressedCallback(true) {
