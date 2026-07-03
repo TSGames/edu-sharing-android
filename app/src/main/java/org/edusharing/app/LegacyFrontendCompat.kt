@@ -181,6 +181,15 @@ object LegacyFrontendCompat {
                     } catch (e) {
                         reportDiag('shim:err:' + (e && e.message ? String(e.message).substring(0, 60) : e));
                     }
+                    // Forcing the URL to the share route isn't enough on its own if the old
+                    // frontend's own (delayed/buggy) share-detection later fires its own redirect
+                    // elsewhere -- e.g. giving up and sending the user to
+                    // messages/SHARING_ERROR after we already got them to the right place. Reuse
+                    // the startup guard here too: (re-)arm it for a few seconds after every
+                    // delivery so it blocks that kind of stray redirect the same way it already
+                    // blocks the login-race one, not just at boot.
+                    guardActive = true;
+                    guardArmedAt = Date.now();
                     // Don't depend on the old CordovaService's own share-detection actually
                     // getting the user to the share screen -- it's a fragile chain we don't
                     // control (a 1000ms hasValidConfig() poll, then an RxJS Observable, then
