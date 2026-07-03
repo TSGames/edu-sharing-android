@@ -181,6 +181,39 @@ object LegacyFrontendCompat {
                     } catch (e) {
                         reportDiag('shim:err:' + (e && e.message ? String(e.message).substring(0, 60) : e));
                     }
+                    // Don't depend on the old CordovaService's own share-detection actually
+                    // getting the user to the share screen -- it's a fragile chain we don't
+                    // control (a 1000ms hasValidConfig() poll, then an RxJS Observable, then
+                    // router.navigate(), all inside code we can't fix or fully verify). We already
+                    // have everything needed (uri/mimetype/file) to build the exact same URL it
+                    // would produce, so force it ourselves shortly after, unless it already made
+                    // it there on its own.
+                    setTimeout(function() {
+                        if (location.pathname.indexOf('/components/app/share') < 0) {
+                            forceNavigateToShare(pendingIntent);
+                        }
+                    }, 1200);
+                };
+                var buildShareUrl = function(intent) {
+                    var params = [];
+                    var uri = intent.extras && (intent.extras['android.intent.extra.TEXT'] || intent.extras['android.intent.extra.STREAM']);
+                    if (uri) { params.push('uri=' + encodeURIComponent(uri)); }
+                    if (intent.type) { params.push('mimetype=' + encodeURIComponent(intent.type)); }
+                    var file = intent.clipItems && intent.clipItems.length ? intent.clipItems[0].file : null;
+                    if (file) { params.push('file=' + encodeURIComponent(file)); }
+                    return '/components/app/share' + (params.length ? '?' + params.join('&') : '');
+                };
+                // Programmatically calling history.pushState does *not* make Angular's Router
+                // activate the new route by itself -- Router only reacts to its own navigations
+                // or to a 'popstate' event (this is how browser back/forward works). Dispatching
+                // one after pushState is the standard way to make an Angular app react to an
+                // externally-driven URL change, without a full page reload (which would lose the
+                // already-booted app state and CordovaService.lastIntent we just set above).
+                var forceNavigateToShare = function(intent) {
+                    try {
+                        history.pushState({}, '', buildShareUrl(intent));
+                        window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+                    } catch (e) {}
                 };
                 window.__eduSharingLegacyDeliverIntent = function(json, nonce) {
                     try {
