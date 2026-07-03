@@ -224,11 +224,33 @@ object LegacyFrontendCompat {
                     // have everything needed (uri/mimetype/file) to build the exact same URL it
                     // would produce, so force it ourselves shortly after, unless it already made
                     // it there on its own.
+                    var reachedShare = function() {
+                        return location.pathname.replace(/\/+/g, '/').indexOf('/components/app/share') >= 0;
+                    };
                     setTimeout(function() {
-                        if (location.pathname.indexOf('/components/app/share') < 0) {
+                        if (!reachedShare()) {
                             forceNavigateToShare(pendingIntent);
                         }
                     }, 1200);
+                    // Confirmed on-device: a genuinely first (not "already on share route")
+                    // share can still fail this way even with the above -- neither the old
+                    // frontend's own navigation nor the pushState/popstate fallback gets there,
+                    // for reasons that don't reproduce in any local repro (a WebView renderer
+                    // not yet fully active after a long background period is the leading
+                    // suspect, but unconfirmed). Escalate to the same reload-to-root + redeliver
+                    // mechanism used for the "already on share route" case above -- it's the one
+                    // path proven reliable regardless of the underlying cause, since it re-runs
+                    // the exact boot sequence a genuine cold start already takes.
+                    setTimeout(function() {
+                        if (!reachedShare()) {
+                            try {
+                                if (window.eduBridge && window.eduBridge.requestReloadRedeliver) {
+                                    window.eduBridge.requestReloadRedeliver();
+                                }
+                            } catch (e) {}
+                            location.href = location.origin;
+                        }
+                    }, 3500);
                 };
                 var buildShareUrl = function(intent) {
                     var params = [];
