@@ -132,6 +132,16 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         setupWebView()
         // A share may have cold-started us: capture it before the page asks for it.
         prepareColdShare(intent)
+        // Wait briefly (bounded, off the WebView JS thread -- this is the UI thread, before
+        // loadUrl()) for that parse to finish before the page starts loading. Without this, the
+        // legacy shim's startup-redirect guard (ShareGuardHost.hasPendingShare(), see
+        // LegacyFrontendCompat) can see pendingShare still null at document-start for the very
+        // first page load -- exactly the load where the old frontend's redirect race happens --
+        // and stay disarmed for it. A short, bounded wait costs nothing for a non-share launch
+        // (shareReady is already a closed/zero-count latch there) and is normally well under a
+        // second even for a real file read; on an unusually slow read it just times out and
+        // loadUrl() proceeds as before, same as without this change.
+        shareReady.await(COLD_SHARE_LOAD_WAIT_SECONDS, TimeUnit.SECONDS)
         // startShell() re-runs on the SAME WebView instance when the user switches servers
         // (ServerUrlActivity's reset flow) -- loadUrl() alone doesn't clear the WebView's own
         // back/forward history, so without this the hardware/gesture back button could
@@ -583,6 +593,9 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     companion object {
         private const val TAG = "MainActivity"
         private const val SHARE_TIMEOUT_SECONDS = 15L
+        // Bounded wait for the cold-share parse before the first loadUrl() -- short enough to
+        // pose no real ANR risk on the UI thread, generous enough to cover a typical read.
+        private const val COLD_SHARE_LOAD_WAIT_SECONDS = 3L
         private const val RESUME_THRESHOLD_MILLIS = 60_000L
         private const val STATE_PENDING_PHOTO_PATH = "pending_photo_path"
     }
