@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -316,13 +318,36 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     private fun nextShareNonce(): String = "share-${shareNonceCounter.incrementAndGet()}"
 
     /**
-     * Debug-only: surfaces what happened when a share was parsed (bytes read, read error, or
-     * "no stream") as a toast, so share failures can be diagnosed on-device without adb. No-op
-     * in release builds.
+     * Debug-only: surfaces what happened during a share (bytes read, read error, consumeShare(),
+     * every guard decision, ...) so failures can be diagnosed on-device without adb. No-op in
+     * release builds.
+     *
+     * Batches messages instead of firing one toast per call: the startup-redirect guard alone
+     * can report a message per history.pushState/replaceState call, and firing that many toasts
+     * in quick succession runs into Android's toast rate limiting (API 30+) or simply flashes
+     * past too fast to read -- either way, later messages silently push earlier ones off
+     * screen/out of the queue. Instead, accumulate into a log and flush it as a single toast
+     * once a short quiet period (no new message) has passed, so nothing gets lost.
      */
     private fun showShareDiagnostic(diagnostic: String) {
         if (!BuildConfig.DEBUG || diagnostic.isEmpty()) return
-        Toast.makeText(this, "Share: $diagnostic", Toast.LENGTH_LONG).show()
+        Log.i(TAG, "share diagnostic: $diagnostic")
+        synchronized(shareDiagnosticLog) { shareDiagnosticLog.add(diagnostic) }
+        diagnosticHandler.removeCallbacks(flushShareDiagnosticLog)
+        diagnosticHandler.postDelayed(flushShareDiagnosticLog, DIAGNOSTIC_FLUSH_DELAY_MILLIS)
+    }
+
+    private val diagnosticHandler = Handler(Looper.getMainLooper())
+    private val shareDiagnosticLog = mutableListOf<String>()
+    private val flushShareDiagnosticLog = Runnable {
+        val combined = synchronized(shareDiagnosticLog) {
+            val text = shareDiagnosticLog.joinToString("\n")
+            shareDiagnosticLog.clear()
+            text
+        }
+        if (combined.isNotEmpty()) {
+            Toast.makeText(this, combined, Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -598,5 +623,6 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         private const val COLD_SHARE_LOAD_WAIT_SECONDS = 3L
         private const val RESUME_THRESHOLD_MILLIS = 60_000L
         private const val STATE_PENDING_PHOTO_PATH = "pending_photo_path"
+        private const val DIAGNOSTIC_FLUSH_DELAY_MILLIS = 900L
     }
 }
