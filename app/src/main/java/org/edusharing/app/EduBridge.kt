@@ -28,6 +28,14 @@ class EduBridge(
         /** Marks the last share as processed so it is not re-delivered on resume. */
         fun onShareConsumed()
 
+        /**
+         * Legacy compat: called right before the shim navigates to the origin root because a
+         * new share arrived while already on the share screen (see LegacyFrontendCompat's
+         * post-delivery check) -- arms the most recently delivered share for re-push once the
+         * freshly loaded root page finishes loading.
+         */
+        fun onReloadRedeliverRequested()
+
         /** Closes the app (UI thread). */
         fun onExitRequested()
 
@@ -56,6 +64,11 @@ class EduBridge(
     @JavascriptInterface
     fun consumeShare() {
         host.onShareConsumed()
+    }
+
+    @JavascriptInterface
+    fun requestReloadRedeliver() {
+        host.onReloadRedeliverRequested()
     }
 
     @JavascriptInterface

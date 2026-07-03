@@ -190,6 +190,33 @@ object LegacyFrontendCompat {
                     // blocks the login-race one, not just at boot.
                     guardActive = true;
                     guardArmedAt = Date.now();
+                    // A share arriving while we're ALREADY on the share route (verified via a
+                    // faithful real-compiled-code repro of a "share A succeeds, share B arrives
+                    // moments later" sequence) means the old frontend would try to update the
+                    // SAME, reused AppSharePageComponent instance in place -- which doesn't
+                    // reliably refresh the displayed file/preview. Force a hard reload instead:
+                    // that guarantees a fully fresh Angular bootstrap and component construction,
+                    // the same reliable path a genuine cold start already takes. Tell native
+                    // first so it re-arms this exact payload for onPageFinished's re-push (this
+                    // same delivery's consumeShare() call, above, already cleared the normal
+                    // pendingShare/coldShareDelivered tracking).
+                    if (location.pathname.replace(/\/+/g, '/').indexOf('/components/app/share') >= 0) {
+                        try {
+                            if (window.eduBridge && window.eduBridge.requestReloadRedeliver) {
+                                window.eduBridge.requestReloadRedeliver();
+                            }
+                        } catch (e) {}
+                        // Navigate to the origin root, not location.reload(): reloading the
+                        // *current* URL would reload the share route itself, and the freshly
+                        // booted document would immediately see "already on the share route"
+                        // again before the SPA's own redirect logic even runs -- an infinite
+                        // reload loop. Starting from root instead re-runs the exact same
+                        // boot -> redirect -> share-screen sequence a genuine cold start already
+                        // takes (proven reliable), just triggered by this share instead of app
+                        // launch.
+                        location.href = location.origin;
+                        return;
+                    }
                     // Don't depend on the old CordovaService's own share-detection actually
                     // getting the user to the share screen -- it's a fragile chain we don't
                     // control (a 1000ms hasValidConfig() poll, then an RxJS Observable, then

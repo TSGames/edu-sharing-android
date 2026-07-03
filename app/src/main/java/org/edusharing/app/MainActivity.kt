@@ -59,6 +59,13 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     @Volatile private var pendingWarmShareNonce: String = ""
     @Volatile private var isActivityResumed = false
 
+    // Most recently delivered share (cold or warm), kept independent of pendingShare/
+    // coldShareDelivered's own consumption tracking. Used only to redeliver after a shim-
+    // triggered hard reload -- see requestReloadRedeliver() / LegacyFrontendCompat's
+    // post-delivery "already on share route" check.
+    @Volatile private var lastDeliveredShare: SharePayload? = null
+    @Volatile private var lastDeliveredShareNonce: String = ""
+
     private var backgroundedAt = 0L
 
     // Set before loading a (possibly new) server; consumed in onPageFinished, see startShell().
@@ -292,6 +299,8 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     private fun maybeDeliverLegacyColdShare() {
         if (coldShareDelivered || !::webView.isInitialized) return
         val payload = pendingShare ?: return
+        lastDeliveredShare = payload
+        lastDeliveredShareNonce = shareNonce
         LegacyFrontendCompat.deliverShare(webView, payload, shareNonce)
     }
 
@@ -346,6 +355,8 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             "if(window.eduBridgeOnShare){window.eduBridgeOnShare($quoted);}",
             null,
         )
+        lastDeliveredShare = payload
+        lastDeliveredShareNonce = nonce
         // Legacy compat (not part of eduBridge): see prepareColdShare above.
         LegacyFrontendCompat.deliverShare(webView, payload, nonce)
     }
@@ -434,6 +445,18 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         // toast appearing, the bug is downstream in that frontend's own handling, not in
         // delivery -- called on the WebView binder thread, so hop to the UI thread for the toast.
         runOnUiThread { showShareDiagnostic("consumed") }
+    }
+
+    override fun onReloadRedeliverRequested() {
+        // Called (WebView binder thread) right before the shim navigates to the origin root --
+        // re-arm the most recently delivered share so onPageFinished's existing
+        // maybeDeliverLegacyColdShare() re-push delivers it again on the freshly loaded
+        // document. Deliberately independent of onShareConsumed()'s pendingShare/
+        // coldShareDelivered, which this same delivery may have already cleared moments earlier.
+        val payload = lastDeliveredShare ?: return
+        pendingShare = payload
+        shareNonce = lastDeliveredShareNonce
+        coldShareDelivered = false
     }
 
     /**
