@@ -315,6 +315,41 @@ object LegacyFrontendCompat {
                         if (h && h.reportDiagnostic) { h.reportDiagnostic(msg); }
                     } catch (e) {}
                 };
+                // A share can be handed off successfully (deliver:/consumed fire) yet never
+                // reach history.pushState at all -- confirmed on-device (zero "nav:" lines even
+                // for the share route itself). RxJS wraps each Observable subscriber call in its
+                // own try/catch and routes any exception to that subscribe's error callback
+                // (here, a silent no-op in the old frontend's own code) -- so a throw inside
+                // router.navigate()'s call chain would never reach our own try/catch around
+                // cb(pendingIntent), and would stay invisible without this. Relay whatever the
+                // app logs via console.error/warn (where RxJS's default error handling, and
+                // Angular's own ErrorHandler, typically surface swallowed exceptions) through the
+                // same diagnostic channel -- the one remaining way to see this without adb.
+                try {
+                    var origConsoleError = console.error.bind(console);
+                    var origConsoleWarn = console.warn.bind(console);
+                    var relayConsole = function(orig, prefix) {
+                        return function() {
+                            try {
+                                // Scoped to while a share is actively being processed (guardActive,
+                                // set right after every delivery -- see deliverPending below) so
+                                // this stays silent during ordinary app usage and only chimes in
+                                // for the window that actually matters here.
+                                if (guardActive) {
+                                    var text = Array.prototype.slice.call(arguments).map(function(a) {
+                                        if (a instanceof Error) { return a.message; }
+                                        if (typeof a === 'object') { try { return JSON.stringify(a); } catch (e2) { return String(a); } }
+                                        return String(a);
+                                    }).join(' ');
+                                    reportDiag(prefix + text.substring(0, 60));
+                                }
+                            } catch (e) {}
+                            return orig.apply(console, arguments);
+                        };
+                    };
+                    console.error = relayConsole(origConsoleError, 'cErr:');
+                    console.warn = relayConsole(origConsoleWarn, 'cWarn:');
+                } catch (e) {}
                 var shortUrl = function(url) {
                     try {
                         var u = new URL(url, location.href);
