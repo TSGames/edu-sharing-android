@@ -187,11 +187,13 @@ object LegacyFrontendCompat {
             // app actually reaches the share route, or after a fixed timeout as a safety valve so
             // navigation is never permanently stuck if a share never actually arrives after all.
             try {
-                var guardHost = window.__eduSharingLegacyGuardHost;
                 // Kept intentionally short: these get joined with other diagnostics into one
                 // toast (see MainActivity.showShareDiagnostic), which has very limited space.
                 var reportDiag = function(msg) {
-                    try { if (guardHost && guardHost.reportDiagnostic) { guardHost.reportDiagnostic(msg); } } catch (e) {}
+                    try {
+                        var h = window.__eduSharingLegacyGuardHost;
+                        if (h && h.reportDiagnostic) { h.reportDiagnostic(msg); }
+                    } catch (e) {}
                 };
                 var shortUrl = function(url) {
                     try {
@@ -201,7 +203,15 @@ object LegacyFrontendCompat {
                         return String(url).substring(0, 40);
                     }
                 };
-                if (guardHost && guardHost.hasPendingShare()) {
+                var armGuard = function(guardHost) {
+                    if (!guardHost) {
+                        reportDiag('G:no-host');
+                        return;
+                    }
+                    if (!guardHost.hasPendingShare()) {
+                        reportDiag('G:off ' + shortUrl(location.href));
+                        return;
+                    }
                     reportDiag('G:on ' + shortUrl(location.href));
                     var GUARD_TIMEOUT_MS = 20000;
                     var guardArmedAt = Date.now();
@@ -242,8 +252,22 @@ object LegacyFrontendCompat {
                             return real(state, title, url);
                         };
                     });
+                };
+                // The ShareGuardHost JS interface (added via addJavascriptInterface, same as
+                // eduBridge) might not be bound in the JS context yet at this very first moment
+                // of document-start execution -- retry briefly instead of assuming it's simply
+                // absent, since this check must not silently do nothing.
+                if (window.__eduSharingLegacyGuardHost) {
+                    armGuard(window.__eduSharingLegacyGuardHost);
                 } else {
-                    reportDiag('G:off ' + shortUrl(location.href));
+                    var guardHostRetries = 0;
+                    var guardHostRetryTimer = setInterval(function() {
+                        var h = window.__eduSharingLegacyGuardHost;
+                        if (h || ++guardHostRetries >= 20) {
+                            clearInterval(guardHostRetryTimer);
+                            armGuard(h);
+                        }
+                    }, 50);
                 }
             } catch (e) {}
 
