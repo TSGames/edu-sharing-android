@@ -78,6 +78,12 @@ import org.json.JSONObject
  * frontend ever legitimately needs to navigate somewhere else during that narrow startup window
  * (e.g. a forced password-change or maintenance page), this would incorrectly block it too.
  * Prefer updating the server's frontend deployment over relying on this if at all possible.
+ *
+ * The `history.pushState`/`replaceState` wrapping itself is always installed (debug-only
+ * diagnostics, reported via `ShareGuardHost.reportDiagnostic`), independent of whether the guard
+ * is actually armed -- this is also the only visibility into what the SPA navigates to during a
+ * *warm* share (app already running, new intent via `onNewIntent`), since that never goes
+ * through a fresh document-start at all and the guard doesn't apply to it.
  */
 object LegacyFrontendCompat {
     private const val TAG = "LegacyFrontendCompat"
@@ -203,6 +209,51 @@ object LegacyFrontendCompat {
                         return String(url).substring(0, 40);
                     }
                 };
+                var isGuardedRoute = function(url) {
+                    try {
+                        var path = new URL(url, location.href).pathname;
+                        return path.indexOf('/components/app/share') >= 0 ||
+                            path.indexOf('/components/app') >= 0;
+                    } catch (e) {
+                        return true; // fail open: never block on a URL we can't parse
+                    }
+                };
+                var GUARD_TIMEOUT_MS = 20000;
+                var guardActive = false;
+                var guardArmedAt = 0;
+                var checkDisarm = function() {
+                    if (!guardActive) { return; }
+                    if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) {
+                        guardActive = false;
+                        reportDiag('G:timeout');
+                        return;
+                    }
+                    if (location.pathname.indexOf('/components/app/share') >= 0) {
+                        guardActive = false;
+                        // Full href (path+query) at the moment the share route is reached --
+                        // shows whether the SPA's own share-redirect carried the right
+                        // queryParams.
+                        reportDiag('G:off@' + shortUrl(location.href));
+                    }
+                };
+                // Always-on, passive navigation observer (reports every history.pushState/
+                // replaceState call as "nav:<path+query>"), independent of whether the
+                // redirect-race guard below is armed. The guard only matters for the very first
+                // page load of a cold start; a warm share (app already running, new intent via
+                // onNewIntent) never goes through a fresh document-start at all, so this is the
+                // only way to see whether/where the SPA navigates for that case.
+                ['pushState', 'replaceState'].forEach(function(name) {
+                    var real = history[name].bind(history);
+                    history[name] = function(state, title, url) {
+                        checkDisarm();
+                        if (guardActive && url && !isGuardedRoute(url)) {
+                            reportDiag('G:X ' + shortUrl(url));
+                            return;
+                        }
+                        reportDiag('nav:' + shortUrl(url));
+                        return real(state, title, url);
+                    };
+                });
                 var armGuard = function(guardHost) {
                     if (!guardHost) {
                         reportDiag('G:no-host');
@@ -213,45 +264,8 @@ object LegacyFrontendCompat {
                         return;
                     }
                     reportDiag('G:on ' + shortUrl(location.href));
-                    var GUARD_TIMEOUT_MS = 20000;
-                    var guardArmedAt = Date.now();
-                    var guardActive = true;
-                    var isGuardedRoute = function(url) {
-                        try {
-                            var path = new URL(url, location.href).pathname;
-                            return path.indexOf('/components/app/share') >= 0 ||
-                                path.indexOf('/components/app') >= 0;
-                        } catch (e) {
-                            return true; // fail open: never block on a URL we can't parse
-                        }
-                    };
-                    var checkDisarm = function() {
-                        if (!guardActive) { return; }
-                        if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) {
-                            guardActive = false;
-                            reportDiag('G:timeout');
-                            return;
-                        }
-                        if (location.pathname.indexOf('/components/app/share') >= 0) {
-                            guardActive = false;
-                            // Full href (path+query) at the moment the share route is reached --
-                            // the single most useful signal: shows whether the SPA's own
-                            // share-redirect actually carried the right queryParams.
-                            reportDiag('G:off@' + shortUrl(location.href));
-                        }
-                    };
-                    ['pushState', 'replaceState'].forEach(function(name) {
-                        var real = history[name].bind(history);
-                        history[name] = function(state, title, url) {
-                            checkDisarm();
-                            if (guardActive && url && !isGuardedRoute(url)) {
-                                reportDiag('G:X ' + shortUrl(url));
-                                return;
-                            }
-                            reportDiag('G:ok ' + shortUrl(url));
-                            return real(state, title, url);
-                        };
-                    });
+                    guardArmedAt = Date.now();
+                    guardActive = true;
                 };
                 // The ShareGuardHost JS interface (added via addJavascriptInterface, same as
                 // eduBridge) might not be bound in the JS context yet at this very first moment
