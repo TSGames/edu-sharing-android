@@ -276,7 +276,15 @@ object LegacyFrontendCompat {
                 };
                 var isGuardedRoute = function(url) {
                     try {
-                        var path = new URL(url, location.href).pathname;
+                        // Normalize repeated slashes before matching: UIConstants.ROUTER_PREFIX
+                        // is 'components/' (trailing slash) and the old CordovaService navigates
+                        // via router.navigate([ROUTER_PREFIX, 'app', 'share'], ...) -- verified
+                        // against the real compiled frontend source that a naive array-join of
+                        // that segment produces '/components//app/share', which this guard's
+                        // plain substring check would then fail to recognize as the share route
+                        // and block outright. A real Router normalizes this, but there's no
+                        // reason for our own match here to be that fragile to begin with.
+                        var path = new URL(url, location.href).pathname.replace(/\/+/g, '/');
                         return path.indexOf('/components/app/share') >= 0 ||
                             path.indexOf('/components/app') >= 0;
                     } catch (e) {
