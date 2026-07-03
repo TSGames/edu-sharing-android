@@ -298,9 +298,18 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
             } catch (e: Exception) {
                 Log.w(TAG, "warm share parse failed", e)
                 null
-            } ?: return@execute
-            val nonce = nextShareNonce()
+            }
+            // Read the diagnostic (and surface it) even when payload is null -- parse() sets
+            // lastDiagnostic on every path, including its failure ones (empty/oversized/no-stream/
+            // exception), and a silent bail here was exactly why warm-share failures showed no
+            // "G:"/diagnostic toast at all: unlike prepareColdShare, this used to return before
+            // ever reading it.
             val diagnostic = ShareIntentParser.lastDiagnostic
+            if (payload == null) {
+                runOnUiThread { showShareDiagnostic(diagnostic) }
+                return@execute
+            }
+            val nonce = nextShareNonce()
             val quoted = JSONObject.quote(payload.toJson())
             runOnUiThread {
                 webView.evaluateJavascript(

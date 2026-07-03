@@ -71,13 +71,18 @@ import org.json.JSONObject
  * share intermittently lands on the default page instead of the share screen — confirmed
  * against the actual pre-eduBridge `cordova.service.ts` (before commit `4aa35fc` in this repo's
  * history), not just inferred. That race lives entirely in the old, already-deployed frontend
- * and genuinely can't be fixed by changing code we don't control. The guard only blocks
- * navigation away from the share/login routes while a share is pending, self-disarms once the
- * share route is reached or after a timeout, and is otherwise inert (native never reports a
- * pending share). It reduces, but does not guarantee eliminating, the race — and if the old
- * frontend ever legitimately needs to navigate somewhere else during that narrow startup window
- * (e.g. a forced password-change or maintenance page), this would incorrectly block it too.
- * Prefer updating the server's frontend deployment over relying on this if at all possible.
+ * and genuinely can't be fixed by changing code we don't control. The guard blocks navigation
+ * away from the share/login routes while a share is pending, for a fixed timeout window --
+ * deliberately does NOT disarm just because the share route was already reached once, since a
+ * still-in-flight, slow `refreshOAuth()` can resolve *after* the share redirect already
+ * succeeded and try to navigate away belatedly (reproduced in a headless-browser repro of the
+ * real race: fails whenever `refreshOAuth()` takes longer than the ~1s the share redirect takes
+ * to fire, succeeds otherwise -- an earlier version that disarmed on reaching the share route
+ * let exactly that stale redirect through unblocked). It reduces, but does not guarantee
+ * eliminating, the race — and if the old frontend ever legitimately needs to navigate somewhere
+ * else during that window (e.g. a forced password-change or maintenance page), this would
+ * incorrectly block it too. Prefer updating the server's frontend deployment over relying on
+ * this if at all possible.
  *
  * The `history.pushState`/`replaceState` wrapping itself is always installed (debug-only
  * diagnostics, reported via `ShareGuardHost.reportDiagnostic`), independent of whether the guard
@@ -221,6 +226,7 @@ object LegacyFrontendCompat {
                 var GUARD_TIMEOUT_MS = 20000;
                 var guardActive = false;
                 var guardArmedAt = 0;
+                var reachedShareRoute = false;
                 var checkDisarm = function() {
                     if (!guardActive) { return; }
                     if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) {
@@ -228,12 +234,19 @@ object LegacyFrontendCompat {
                         reportDiag('G:timeout');
                         return;
                     }
-                    if (location.pathname.indexOf('/components/app/share') >= 0) {
-                        guardActive = false;
-                        // Full href (path+query) at the moment the share route is reached --
-                        // shows whether the SPA's own share-redirect carried the right
-                        // queryParams.
-                        reportDiag('G:off@' + shortUrl(location.href));
+                    // Deliberately does NOT disarm just because we're *currently* on the share
+                    // route: a still-in-flight, slow AppLoginPageComponent.refreshOAuth() can
+                    // resolve *after* the share redirect already succeeded and try to navigate
+                    // away belatedly -- disarming here would let exactly that stale redirect
+                    // through unblocked (reproduced empirically: fails whenever refreshOAuth()
+                    // takes longer than the ~1s it takes the share redirect to fire, succeeds
+                    // otherwise). Only the timeout above ends the guard.
+                    if (!reachedShareRoute && location.pathname.indexOf('/components/app/share') >= 0) {
+                        reachedShareRoute = true;
+                        // Full href (path+query) at the moment the share route is first reached
+                        // -- shows whether the SPA's own share-redirect carried the right
+                        // queryParams. Guard itself stays armed until the timeout.
+                        reportDiag('G:reached@' + shortUrl(location.href));
                     }
                 };
                 // Always-on, passive navigation observer (reports every history.pushState/
