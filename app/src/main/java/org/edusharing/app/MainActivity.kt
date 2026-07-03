@@ -65,6 +65,11 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     // post-delivery "already on share route" check.
     @Volatile private var lastDeliveredShare: SharePayload? = null
     @Volatile private var lastDeliveredShareNonce: String = ""
+    // Breaks a possible reload loop: if the redelivered share's own arrival on the freshly
+    // booted page is (for whatever reason) again seen as "already on the share route" -- e.g. a
+    // slow real-device boot racing the SPA's own default-location redirect the same way the
+    // guard already protects against -- don't reload a second time for the same nonce.
+    @Volatile private var reloadRedeliveredNonce: String? = null
 
     private var backgroundedAt = 0L
 
@@ -454,8 +459,16 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         // document. Deliberately independent of onShareConsumed()'s pendingShare/
         // coldShareDelivered, which this same delivery may have already cleared moments earlier.
         val payload = lastDeliveredShare ?: return
+        val nonce = lastDeliveredShareNonce
+        if (reloadRedeliveredNonce == nonce) {
+            // Already reload-redelivered this exact share once -- don't loop. Falls back to the
+            // shim's softer forceNavigateToShare mechanism instead.
+            runOnUiThread { showShareDiagnostic("reload-loop-blocked") }
+            return
+        }
+        reloadRedeliveredNonce = nonce
         pendingShare = payload
-        shareNonce = lastDeliveredShareNonce
+        shareNonce = nonce
         coldShareDelivered = false
     }
 
