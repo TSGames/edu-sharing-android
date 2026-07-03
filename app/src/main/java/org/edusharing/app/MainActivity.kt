@@ -332,7 +332,12 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
     private fun showShareDiagnostic(diagnostic: String) {
         if (!BuildConfig.DEBUG || diagnostic.isEmpty()) return
         Log.i(TAG, "share diagnostic: $diagnostic")
-        synchronized(shareDiagnosticLog) { shareDiagnosticLog.add(diagnostic) }
+        synchronized(shareDiagnosticLog) {
+            shareDiagnosticLog.add(diagnostic)
+            // Keep only the most recent lines in the toast itself -- a long flood of guard
+            // events would otherwise make it unreadable; the full history is still in Logcat.
+            while (shareDiagnosticLog.size > DIAGNOSTIC_MAX_LINES) shareDiagnosticLog.removeAt(0)
+        }
         diagnosticHandler.removeCallbacks(flushShareDiagnosticLog)
         diagnosticHandler.postDelayed(flushShareDiagnosticLog, DIAGNOSTIC_FLUSH_DELAY_MILLIS)
     }
@@ -382,7 +387,7 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         // consumeShare(), i.e. native's hand-off succeeded. If sharing still fails despite this
         // toast appearing, the bug is downstream in that frontend's own handling, not in
         // delivery -- called on the WebView binder thread, so hop to the UI thread for the toast.
-        runOnUiThread { showShareDiagnostic("consumeShare() empfangen -- Übergabe an Frontend ok") }
+        runOnUiThread { showShareDiagnostic("consumed") }
     }
 
     /**
@@ -624,5 +629,6 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         private const val RESUME_THRESHOLD_MILLIS = 60_000L
         private const val STATE_PENDING_PHOTO_PATH = "pending_photo_path"
         private const val DIAGNOSTIC_FLUSH_DELAY_MILLIS = 900L
+        private const val DIAGNOSTIC_MAX_LINES = 8
     }
 }

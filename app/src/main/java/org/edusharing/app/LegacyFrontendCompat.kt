@@ -188,11 +188,21 @@ object LegacyFrontendCompat {
             // navigation is never permanently stuck if a share never actually arrives after all.
             try {
                 var guardHost = window.__eduSharingLegacyGuardHost;
+                // Kept intentionally short: these get joined with other diagnostics into one
+                // toast (see MainActivity.showShareDiagnostic), which has very limited space.
                 var reportDiag = function(msg) {
                     try { if (guardHost && guardHost.reportDiagnostic) { guardHost.reportDiagnostic(msg); } } catch (e) {}
                 };
+                var shortUrl = function(url) {
+                    try {
+                        var u = new URL(url, location.href);
+                        return (u.pathname + u.search).substring(0, 40);
+                    } catch (e) {
+                        return String(url).substring(0, 40);
+                    }
+                };
                 if (guardHost && guardHost.hasPendingShare()) {
-                    reportDiag('Guard: scharf (path=' + location.pathname + ')');
+                    reportDiag('G:on ' + shortUrl(location.href));
                     var GUARD_TIMEOUT_MS = 20000;
                     var guardArmedAt = Date.now();
                     var guardActive = true;
@@ -209,12 +219,15 @@ object LegacyFrontendCompat {
                         if (!guardActive) { return; }
                         if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) {
                             guardActive = false;
-                            reportDiag('Guard: Timeout, entschärft');
+                            reportDiag('G:timeout');
                             return;
                         }
                         if (location.pathname.indexOf('/components/app/share') >= 0) {
                             guardActive = false;
-                            reportDiag('Guard: Share-Route erreicht, entschärft');
+                            // Full href (path+query) at the moment the share route is reached --
+                            // the single most useful signal: shows whether the SPA's own
+                            // share-redirect actually carried the right queryParams.
+                            reportDiag('G:off@' + shortUrl(location.href));
                         }
                     };
                     ['pushState', 'replaceState'].forEach(function(name) {
@@ -222,15 +235,15 @@ object LegacyFrontendCompat {
                         history[name] = function(state, title, url) {
                             checkDisarm();
                             if (guardActive && url && !isGuardedRoute(url)) {
-                                reportDiag('Guard: blockiert ' + name + ' zu ' + url);
+                                reportDiag('G:X ' + shortUrl(url));
                                 return;
                             }
-                            reportDiag('Guard: erlaubt ' + name + ' zu ' + url);
+                            reportDiag('G:ok ' + shortUrl(url));
                             return real(state, title, url);
                         };
                     });
                 } else {
-                    reportDiag('Guard: nicht scharf (kein Share ausstehend, path=' + location.pathname + ')');
+                    reportDiag('G:off ' + shortUrl(location.href));
                 }
             } catch (e) {}
 

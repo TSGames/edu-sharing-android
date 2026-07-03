@@ -59,13 +59,13 @@ object ShareIntentParser {
             val declaredSize = queryStreamSize(resolver, streamUri)
             val bytes = if (declaredSize != null && declaredSize > MAX_INLINE_BYTES) {
                 Log.w(TAG, "share content declared size $declaredSize exceeds inline cap ($MAX_INLINE_BYTES): $streamUri")
-                lastDiagnostic = "Datei zu groß (${declaredSize / (1024 * 1024)} MB)"
+                lastDiagnostic = "big:${declaredSize / (1024 * 1024)}MB"
                 null
             } else {
                 readBytes(resolver, streamUri)
             }
             if (bytes != null) {
-                lastDiagnostic = "Datei ok: ${bytes.size} bytes, $mimetype"
+                lastDiagnostic = "ok:${bytes.size}B"
             }
             return SharePayload(
                 action = SharePayload.ACTION_SEND,
@@ -78,7 +78,7 @@ object ShareIntentParser {
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
         if (!sharedText.isNullOrEmpty()) {
-            lastDiagnostic = "Text/Link geteilt (${sharedText.length} Zeichen)"
+            lastDiagnostic = "txt:${sharedText.length}ch"
             return SharePayload(
                 action = SharePayload.ACTION_SEND,
                 mimetype = "text/plain",
@@ -86,7 +86,7 @@ object ShareIntentParser {
                 uri = sharedText,
             )
         }
-        lastDiagnostic = "Intent ohne STREAM und ohne TEXT (type=$type)"
+        lastDiagnostic = "empty:$type"
         return null
     }
 
@@ -138,17 +138,17 @@ object ShareIntentParser {
                     val bytes = input.readBytes()
                     return if (bytes.size > MAX_INLINE_BYTES) {
                         Log.w(TAG, "share content exceeds inline cap (${bytes.size} bytes): $uri")
-                        lastDiagnostic = "Datei zu groß (${bytes.size / (1024 * 1024)} MB)"
+                        lastDiagnostic = "big:${bytes.size / (1024 * 1024)}MB"
                         null
                     } else {
                         bytes
                     }
                 }
                 Log.w(TAG, "readBytes got no stream for $uri (attempt ${attempt + 1})")
-                lastDiagnostic = "Kein Stream für die Datei (Provider lieferte nichts)"
+                lastDiagnostic = "no-stream#${attempt + 1}"
             } catch (e: Exception) {
                 Log.w(TAG, "readBytes attempt ${attempt + 1} failed for $uri", e)
-                lastDiagnostic = "Lesefehler (${e.javaClass.simpleName}): ${e.message}"
+                lastDiagnostic = "err:${e.javaClass.simpleName}"
             }
             if (attempt == 0) {
                 try {
