@@ -333,17 +333,27 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         if (!BuildConfig.DEBUG || diagnostic.isEmpty()) return
         Log.i(TAG, "share diagnostic: $diagnostic")
         synchronized(shareDiagnosticLog) {
+            if (shareDiagnosticLog.isEmpty()) diagnosticBatchStartedAt = System.currentTimeMillis()
             shareDiagnosticLog.add(diagnostic)
             // Keep only the most recent lines in the toast itself -- a long flood of guard
             // events would otherwise make it unreadable; the full history is still in Logcat.
             while (shareDiagnosticLog.size > DIAGNOSTIC_MAX_LINES) shareDiagnosticLog.removeAt(0)
         }
+        // A steady trickle of messages (e.g. one guard decision per navigation) would otherwise
+        // keep resetting the quiet-period timer forever and never actually flush -- cap how long
+        // a batch can be held back regardless of continued activity.
+        val elapsed = System.currentTimeMillis() - diagnosticBatchStartedAt
         diagnosticHandler.removeCallbacks(flushShareDiagnosticLog)
-        diagnosticHandler.postDelayed(flushShareDiagnosticLog, DIAGNOSTIC_FLUSH_DELAY_MILLIS)
+        if (elapsed >= DIAGNOSTIC_MAX_BATCH_MILLIS) {
+            diagnosticHandler.post(flushShareDiagnosticLog)
+        } else {
+            diagnosticHandler.postDelayed(flushShareDiagnosticLog, DIAGNOSTIC_FLUSH_DELAY_MILLIS)
+        }
     }
 
     private val diagnosticHandler = Handler(Looper.getMainLooper())
     private val shareDiagnosticLog = mutableListOf<String>()
+    private var diagnosticBatchStartedAt = 0L
     private val flushShareDiagnosticLog = Runnable {
         val combined = synchronized(shareDiagnosticLog) {
             val text = shareDiagnosticLog.joinToString("\n")
@@ -630,5 +640,6 @@ class MainActivity : AppCompatActivity(), EduBridge.Host {
         private const val STATE_PENDING_PHOTO_PATH = "pending_photo_path"
         private const val DIAGNOSTIC_FLUSH_DELAY_MILLIS = 900L
         private const val DIAGNOSTIC_MAX_LINES = 8
+        private const val DIAGNOSTIC_MAX_BATCH_MILLIS = 3000L
     }
 }
