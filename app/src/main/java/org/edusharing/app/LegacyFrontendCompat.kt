@@ -162,7 +162,18 @@ object LegacyFrontendCompat {
                             window.eduBridge.consumeShare();
                         }
                     } catch (e) {}
-                    cb(pendingIntent);
+                    // cb is the old CordovaService's own handleIntent/handleIntentBase closure --
+                    // real frontend code we don't control. Without this try/catch, any exception
+                    // it throws (e.g. a null this.observerShareContent) is swallowed silently by
+                    // evaluateJavascript with zero trace: native already reported "consumed" above,
+                    // so a run that shows "consumed" but no subsequent "nav:" and no "shim:err" is
+                    // the one combination this can no longer explain -- it would mean the SPA's own
+                    // handler ran to completion without ever touching history.pushState/replaceState.
+                    try {
+                        cb(pendingIntent);
+                    } catch (e) {
+                        reportDiag('shim:err:' + (e && e.message ? String(e.message).substring(0, 60) : e));
+                    }
                 };
                 window.__eduSharingLegacyDeliverIntent = function(json, nonce) {
                     try {
