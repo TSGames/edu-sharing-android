@@ -162,6 +162,13 @@ object LegacyFrontendCompat {
                             window.eduBridge.consumeShare();
                         }
                     } catch (e) {}
+                    // Ground truth for "does the object we're handing to the old frontend
+                    // actually carry the file bytes": reports the *native-delivered* stream
+                    // length right before cb() sees it -- distinguishes "we never sent it"
+                    // (bug is upstream in our own payload construction) from "we sent it fine,
+                    // the SPA's own CordovaService.lastIntent/AppSharePageComponent gate is what
+                    // loses it" (bug is downstream, in code we don't control).
+                    reportDiag('deliver:' + (pendingIntent.stream ? pendingIntent.stream.length + 'ch' : 'no-stream'));
                     // cb is the old CordovaService's own handleIntent/handleIntentBase closure --
                     // real frontend code we don't control. Without this try/catch, any exception
                     // it throws (e.g. a null this.observerShareContent) is swallowed silently by
