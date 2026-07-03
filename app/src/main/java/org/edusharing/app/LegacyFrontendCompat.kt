@@ -1,6 +1,7 @@
 package org.edusharing.app
 
 import android.util.Log
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -61,9 +62,41 @@ import org.json.JSONObject
  * `navigator.camera`, and `isReallyRunningCordova()`/`isIOS()`/`isAndroid()` all check
  * `this.platform` (set from `window.eduBridge`) first. Repeatedly firing `deviceready` is
  * likewise a no-op there since `deviceIsReady` is already `true` by the time it matters.
+ *
+ * **Startup-redirect guard (riskier mitigation, see SCRIPT's `history.pushState`/`replaceState`
+ * wrapping):** old `CordovaService.whenDeviceIsReady()` only fires the share redirect once its
+ * `setInterval(..., 1000)` `hasValidConfig()` poll ticks true, and that races against
+ * `AppLoginPageComponent`'s own "already logged in -> default location" redirect (gated behind
+ * a real network round-trip). Whichever finishes last wins, so an already-logged-in cold/warm
+ * share intermittently lands on the default page instead of the share screen — confirmed
+ * against the actual pre-eduBridge `cordova.service.ts` (before commit `4aa35fc` in this repo's
+ * history), not just inferred. That race lives entirely in the old, already-deployed frontend
+ * and genuinely can't be fixed by changing code we don't control. The guard only blocks
+ * navigation away from the share/login routes while a share is pending, self-disarms once the
+ * share route is reached or after a timeout, and is otherwise inert (native never reports a
+ * pending share). It reduces, but does not guarantee eliminating, the race — and if the old
+ * frontend ever legitimately needs to navigate somewhere else during that narrow startup window
+ * (e.g. a forced password-change or maintenance page), this would incorrectly block it too.
+ * Prefer updating the server's frontend deployment over relying on this if at all possible.
  */
 object LegacyFrontendCompat {
     private const val TAG = "LegacyFrontendCompat"
+
+    /**
+     * Tiny JS interface exposing just enough native state for the shim's startup-redirect guard
+     * (see SCRIPT's `history.pushState`/`replaceState` wrapping) to know whether it should arm
+     * itself for the current page load -- only when a share is actually pending. NOT part of
+     * the eduBridge contract; register alongside [installIfSupported] (see MainActivity).
+     */
+    class ShareGuardHost(private val hasPendingShare: () -> Boolean) {
+        @JavascriptInterface
+        fun hasPendingShare(): Boolean = hasPendingShare()
+
+        companion object {
+            /** The object name the shim script looks for: `window.__eduSharingLegacyGuardHost`. */
+            const val NAME = "__eduSharingLegacyGuardHost"
+        }
+    }
 
     // Casing matches the real cordova-plugin-device shape ('Android' / 'iOS'), since the old
     // CordovaService compares against those exact strings. window.plugins.intent buffers a
@@ -126,6 +159,53 @@ object LegacyFrontendCompat {
                     },
                 };
             }
+
+            // Startup-redirect guard (risky, scoped mitigation for un-migrated servers -- see
+            // LegacyFrontendCompat's class doc). Old CordovaService's share-redirect fires only
+            // once its 1000ms hasValidConfig() poll ticks true, and races against
+            // AppLoginPageComponent's own "already logged in -> go to default location" redirect
+            // (a real network round-trip via refreshOAuth()); whichever finishes last wins the
+            // navigation, so an already-logged-in cold/warm share intermittently lands on the
+            // default page instead of the share screen. That race lives entirely in the
+            // already-deployed old frontend and can't be fixed from here directly.
+            //
+            // Only armed when native reports a share is actually pending for this page load
+            // (window.__eduSharingLegacyGuardHost, see MainActivity/ShareGuardHost) -- inert
+            // otherwise. While armed, blocks any history.pushState/replaceState navigation whose
+            // target isn't the share route or the login route itself (so a user who *isn't*
+            // logged in can still see the login form -- only the default-location redirect that
+            // fires when already logged in is what gets blocked). Disarms itself the moment the
+            // app actually reaches the share route, or after a fixed timeout as a safety valve so
+            // navigation is never permanently stuck if a share never actually arrives after all.
+            try {
+                if (window.__eduSharingLegacyGuardHost && window.__eduSharingLegacyGuardHost.hasPendingShare()) {
+                    var GUARD_TIMEOUT_MS = 20000;
+                    var guardArmedAt = Date.now();
+                    var guardActive = true;
+                    var isGuardedRoute = function(url) {
+                        try {
+                            var path = new URL(url, location.href).pathname;
+                            return path.indexOf('/components/app/share') >= 0 ||
+                                path.indexOf('/components/app') >= 0;
+                        } catch (e) {
+                            return true; // fail open: never block on a URL we can't parse
+                        }
+                    };
+                    var checkDisarm = function() {
+                        if (!guardActive) { return; }
+                        if (Date.now() - guardArmedAt > GUARD_TIMEOUT_MS) { guardActive = false; return; }
+                        if (location.pathname.indexOf('/components/app/share') >= 0) { guardActive = false; }
+                    };
+                    ['pushState', 'replaceState'].forEach(function(name) {
+                        var real = history[name].bind(history);
+                        history[name] = function(state, title, url) {
+                            checkDisarm();
+                            if (guardActive && url && !isGuardedRoute(url)) { return; }
+                            return real(state, title, url);
+                        };
+                    });
+                }
+            } catch (e) {}
 
             var deviceReadyAttempts = 0;
             var deviceReadyTimer = setInterval(function() {
