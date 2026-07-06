@@ -62,6 +62,7 @@ jobs:
           name: edu-sharing-android-lint-report
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: warn
+          retention-days: 1
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
